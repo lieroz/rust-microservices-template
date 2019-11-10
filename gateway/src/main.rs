@@ -3,16 +3,23 @@ mod handlers;
 
 use actix_web::{middleware::Logger, App, HttpServer};
 
+use rdkafka::config::ClientConfig;
+use rdkafka::producer::FutureProducer;
+
 fn main() {
     std::env::set_var("RUST_LOG", "actix_web=debug");
     env_logger::init();
 
     let sys = actix_rt::System::new("gateway");
+    let producer: FutureProducer = ClientConfig::new()
+        .create()
+        .expect("Producer creation error");
 
     let mut listen_fd = listenfd::ListenFd::from_env();
-    let mut server = HttpServer::new(|| {
+    let mut server = HttpServer::new(move || {
         App::new()
             .configure(appconfig::config_app)
+            .data(producer.clone())
             .wrap(Logger::new(
                 "ip: %a, date: %t, response code: %s, response size: %b (bytes), duration: %D (ms)",
             ))
