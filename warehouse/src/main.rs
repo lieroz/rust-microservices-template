@@ -8,6 +8,7 @@ fn main() {
     std::env::set_var("RUST_LOG", "actix_web=info");
     env_logger::init();
 
+    let sys = actix_rt::System::new("warehouse");
     let manager = RedisConnectionManager::new("redis://127.0.0.1:6379").unwrap();
     let pool = r2d2::Pool::builder().build(manager).unwrap();
 
@@ -27,5 +28,6 @@ fn main() {
         server.workers(4).bind("0.0.0.0:8080").unwrap()
     };
 
-    server.run().unwrap();
+    server.start();
+    sys.run();
 }

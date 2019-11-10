@@ -7,7 +7,7 @@ fn main() {
     std::env::set_var("RUST_LOG", "actix_web=debug");
     env_logger::init();
 
-    let sys = actix_rt::System::new("gateway");
+    let sys = actix_rt::System::new("orders");
 
     let mut listen_fd = listenfd::ListenFd::from_env();
     let mut server = HttpServer::new(|| {

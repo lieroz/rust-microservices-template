@@ -14,9 +14,9 @@ pub fn config_app(cfg: &mut web::ServiceConfig) {
                     .service(web::resource("/startup").route(web::get().to(|| HttpResponse::Ok()))),
             )
             .service(
-                web::scope("/goods")
-                    .service(web::resource("").route(web::get().to(get_goods)))
-                    .service(web::resource("/{id}").route(web::get().to(get_good_detailed))),
+                web::scope("/user/{user_id}")
+                    .service(web::resource("/orders").route(web::get().to(get_orders)))
+                    .service(web::resource("/order/{id}").route(web::get().to(get_order_detailed))),
             ),
     );
 }

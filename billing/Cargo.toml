@@ -1,5 +1,5 @@
 [package]
-name = "warehouse"
+name = "billing"
 version = "0.1.0"
 authors = ["Kamakin Andrey <a.kamakin@icloud.com>"]
 edition = "2018"
@@ -12,5 +12,3 @@ actix-rt = "0.2"
 actix-web = "1.0"
 listenfd = "0.3"
 env_logger = "0.7"
-r2d2_redis = "0.11"
-qstring = "0.7"

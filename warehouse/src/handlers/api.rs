@@ -2,7 +2,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use r2d2_redis::{r2d2, redis, RedisConnectionManager};
 use std::ops::DerefMut;
 
-pub fn get_items(
+pub fn get_goods(
     req: HttpRequest,
     db: web::Data<r2d2::Pool<RedisConnectionManager>>,
 ) -> HttpResponse {
@@ -49,5 +49,9 @@ pub fn get_items(
         }
     }
 
+    HttpResponse::Ok().finish()
+}
+
+pub fn get_good_detailed(req: HttpRequest) -> HttpResponse {
     HttpResponse::Ok().finish()
 }
