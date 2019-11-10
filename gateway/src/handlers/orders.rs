@@ -1,8 +1,21 @@
 use actix_web::{web, HttpRequest, HttpResponse};
 
+use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 
-use rdkafka::message::OwnedHeaders;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct Item {
+    id: u64,
+    amount: u64,
+}
+
+#[derive(Deserialize)]
+struct Order {
+    id: u64,
+    goods: Vec<Item>,
+}
 
 pub fn get_orders(req: HttpRequest) -> HttpResponse {
     // send to api method
