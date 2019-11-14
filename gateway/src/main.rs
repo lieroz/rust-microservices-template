@@ -12,6 +12,8 @@ fn main() {
 
     let sys = actix_rt::System::new("gateway");
     let producer: FutureProducer = ClientConfig::new()
+        .set("bootstrap.servers", "localhost:9092")
+        .set("message.timeout.ms", "5000")
         .create()
         .expect("Producer creation error");
 
