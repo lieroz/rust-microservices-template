@@ -1,6 +1,11 @@
 use actix_web::{web, HttpRequest, HttpResponse};
+
+use futures::*;
+
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
+
+use tokio::runtime::current_thread;
 
 pub fn get_orders(req: HttpRequest) -> HttpResponse {
     // send to api method
@@ -8,13 +13,26 @@ pub fn get_orders(req: HttpRequest) -> HttpResponse {
 }
 
 pub fn create_order(bytes: web::Bytes, producer: web::Data<FutureProducer>) -> HttpResponse {
-    producer.send(
-        FutureRecord::to("orders")
-            .payload(&String::from_utf8(bytes.to_vec()).unwrap())
-            .key("key")
-            .headers(OwnedHeaders::new().add("header_key", "header_value")),
-        0,
-    );
+    let producer_future = producer
+        .send(
+            FutureRecord::to("orders")
+                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .key("key")
+                .headers(OwnedHeaders::new().add("header_key", "header_value")),
+            0,
+        )
+        .then(|result| {
+            match result {
+                Ok(Ok(delivery)) => println!("Sent: {:?}", delivery),
+                Ok(Err((e, _))) => println!("Error: {:?}", e),
+                Err(_) => println!("Future cancelled"),
+            }
+            Ok(())
+        });
+    let _ = current_thread::Runtime::new()
+        .unwrap()
+        .handle()
+        .spawn(producer_future);
     HttpResponse::Ok().finish()
 }
 
