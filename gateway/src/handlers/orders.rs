@@ -1,60 +1,152 @@
-use actix_web::{web, HttpRequest, HttpResponse};
-
+use actix_web::{web, HttpResponse};
 use futures::*;
-
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
 
-use tokio::runtime::current_thread;
+static ORDERS_TOPIC: &str = "orders";
 
-pub fn get_orders(req: HttpRequest) -> HttpResponse {
-    // send to api method
+pub fn get_orders() -> HttpResponse {
+    // send to orders service api method
     HttpResponse::Ok().finish()
 }
 
-pub fn create_order(bytes: web::Bytes, producer: web::Data<FutureProducer>) -> HttpResponse {
-    let producer_future = producer
+pub fn create_order(
+    bytes: web::Bytes,
+    user_id: web::Path<(String)>,
+    producer: web::Data<FutureProducer>,
+) -> HttpResponse {
+    let key = bytes.hash(&mut DefaultHasher::new());
+
+    let result = producer
         .send(
-            FutureRecord::to("orders")
+            FutureRecord::to(ORDERS_TOPIC)
+                .key(&key)
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
-                .key("key")
-                .headers(OwnedHeaders::new().add("header_key", "header_value")),
+                .headers(OwnedHeaders::new().add("user_id", user_id.as_ref())),
             0,
         )
-        .then(|result| {
-            match result {
-                Ok(Ok(delivery)) => println!("Sent: {:?}", delivery),
-                Ok(Err((e, _))) => println!("Error: {:?}", e),
-                Err(_) => println!("Future cancelled"),
-            }
-            Ok(())
-        });
-    let _ = current_thread::Runtime::new()
-        .unwrap()
-        .handle()
-        .spawn(producer_future);
+        .wait();
+
+    match result {
+        Ok(Ok(delivery)) => HttpResponse::Created().json(format!(
+            r#"{{"partition": "{}", "offset: "{}"}}"#,
+            delivery.0, delivery.1
+        )),
+        Ok(Err((error, message))) => HttpResponse::BadRequest().json(format!(
+            r#"{{"error": "{}", "message": "{:?}"}}"#,
+            error, message
+        )),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
+
+pub fn get_order_detailed() -> HttpResponse {
+    // send to orders service api method
     HttpResponse::Ok().finish()
 }
 
-pub fn get_order_detailed(req: HttpRequest) -> HttpResponse {
-    // send to api method
-    HttpResponse::Ok().finish()
+pub fn update_order(
+    bytes: web::Bytes,
+    params: web::Path<(String, String)>,
+    producer: web::Data<FutureProducer>,
+) -> HttpResponse {
+    let key = bytes.hash(&mut DefaultHasher::new());
+
+    let result = producer
+        .send(
+            FutureRecord::to(ORDERS_TOPIC)
+                .key(&key)
+                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .headers(
+                    OwnedHeaders::new()
+                        .add("user_id", &params.0)
+                        .add("id", &params.1),
+                ),
+            0,
+        )
+        .wait();
+
+    match result {
+        Ok(Ok(delivery)) => HttpResponse::Created().json(format!(
+            r#"{{"partition": "{}", "offset: "{}"}}"#,
+            delivery.0, delivery.1
+        )),
+        Ok(Err((error, message))) => HttpResponse::BadRequest().json(format!(
+            r#"{{"error": "{}", "message": "{:?}"}}"#,
+            error, message
+        )),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
 }
 
-pub fn update_order(req: HttpRequest, producer: web::Data<FutureProducer>) -> HttpResponse {
-    // add mpsc send to kafka thread
-    HttpResponse::Ok().finish()
-}
+pub fn add_good_to_order(
+    bytes: web::Bytes,
+    params: web::Path<(String, String, String)>,
+    producer: web::Data<FutureProducer>,
+) -> HttpResponse {
+    let key = bytes.hash(&mut DefaultHasher::new());
 
-pub fn add_good_to_order(req: HttpRequest, producer: web::Data<FutureProducer>) -> HttpResponse {
-    // add mpsc send to kafka thread
-    HttpResponse::Ok().finish()
+    let result = producer
+        .send(
+            FutureRecord::to(ORDERS_TOPIC)
+                .key(&key)
+                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .headers(
+                    OwnedHeaders::new()
+                        .add("user_id", &params.0)
+                        .add("order_id", &params.1)
+                        .add("good_id", &params.2),
+                ),
+            0,
+        )
+        .wait();
+
+    match result {
+        Ok(Ok(delivery)) => HttpResponse::Created().json(format!(
+            r#"{{"partition": "{}", "offset: "{}"}}"#,
+            delivery.0, delivery.1
+        )),
+        Ok(Err((error, message))) => HttpResponse::BadRequest().json(format!(
+            r#"{{"error": "{}", "message": "{:?}"}}"#,
+            error, message
+        )),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
 }
 
 pub fn delete_good_from_order(
-    req: HttpRequest,
+    bytes: web::Bytes,
+    params: web::Path<(String, String, String)>,
     producer: web::Data<FutureProducer>,
 ) -> HttpResponse {
-    // add mpsc send to kafka thread
-    HttpResponse::Ok().finish()
+    let key = bytes.hash(&mut DefaultHasher::new());
+
+    let result = producer
+        .send(
+            FutureRecord::to(ORDERS_TOPIC)
+                .key(&key)
+                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .headers(
+                    OwnedHeaders::new()
+                        .add("user_id", &params.0)
+                        .add("order_id", &params.1)
+                        .add("good_id", &params.2),
+                ),
+            0,
+        )
+        .wait();
+
+    match result {
+        Ok(Ok(delivery)) => HttpResponse::Created().json(format!(
+            r#"{{"partition": "{}", "offset: "{}"}}"#,
+            delivery.0, delivery.1
+        )),
+        Ok(Err((error, message))) => HttpResponse::BadRequest().json(format!(
+            r#"{{"error": "{}", "message": "{:?}"}}"#,
+            error, message
+        )),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
 }

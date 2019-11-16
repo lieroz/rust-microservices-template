@@ -1,10 +1,9 @@
-mod appconfig;
-mod handlers;
-
 use actix_web::{middleware::Logger, App, HttpServer};
-
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
+
+mod appconfig;
+mod handlers;
 
 fn main() {
     std::env::set_var("RUST_LOG", "actix_web=debug");
@@ -34,5 +33,5 @@ fn main() {
     };
 
     server.start();
-    sys.run();
+    let _ = sys.run();
 }

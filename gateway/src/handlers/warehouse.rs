@@ -1,11 +1,11 @@
-use actix_web::{HttpRequest, HttpResponse};
+use actix_web::HttpResponse;
 
-pub fn get_goods(req: HttpRequest) -> HttpResponse {
-    // send to api method
+pub fn get_goods() -> HttpResponse {
+    // send to warehouse service api method
     HttpResponse::Ok().finish()
 }
 
-pub fn get_good_delailed(req: HttpRequest) -> HttpResponse {
-    // send to api method
+pub fn get_good_delailed() -> HttpResponse {
+    // send to warehouse service api method
     HttpResponse::Ok().finish()
 }
