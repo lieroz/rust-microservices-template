@@ -1,4 +1,4 @@
-use crate::Config;
+use crate::KafkaTopics;
 use actix_web::{web, HttpResponse};
 use futures::*;
 use rdkafka::message::OwnedHeaders;
@@ -10,13 +10,13 @@ pub fn make_billing(
     bytes: web::Bytes,
     params: web::Path<(String, String)>,
     producer: web::Data<FutureProducer>,
-    config: web::Data<Config>,
+    kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
     let key = bytes.hash(&mut DefaultHasher::new());
 
     let result = producer
         .send(
-            FutureRecord::to(&config.billing_service_kafka_topic)
+            FutureRecord::to(&kafka_topics.billing_service_topic)
                 .key(&key)
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(

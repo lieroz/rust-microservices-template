@@ -1,4 +1,4 @@
-use crate::Config;
+use crate::KafkaTopics;
 use actix_web::{web, HttpResponse};
 use futures::*;
 use rdkafka::message::OwnedHeaders;
@@ -15,13 +15,13 @@ pub fn create_order(
     bytes: web::Bytes,
     user_id: web::Path<(String)>,
     producer: web::Data<FutureProducer>,
-    config: web::Data<Config>,
+    kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
     let key = bytes.hash(&mut DefaultHasher::new());
 
     let result = producer
         .send(
-            FutureRecord::to(&config.order_service_kafka_topic)
+            FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key)
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(OwnedHeaders::new().add("user_id", user_id.as_ref())),
@@ -51,13 +51,14 @@ pub fn update_order(
     bytes: web::Bytes,
     params: web::Path<(String, String)>,
     producer: web::Data<FutureProducer>,
-    config: web::Data<Config>,
+    kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
     let key = bytes.hash(&mut DefaultHasher::new());
 
     let result = producer
         .send(
-            FutureRecord::to(&config.order_service_kafka_topic)
+            FutureRecord::to(&kafka_topics.orders_service_topic)
+                .key(&key)
                 .key(&key)
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(
@@ -86,13 +87,13 @@ pub fn add_good_to_order(
     bytes: web::Bytes,
     params: web::Path<(String, String, String)>,
     producer: web::Data<FutureProducer>,
-    config: web::Data<Config>,
+    kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
     let key = bytes.hash(&mut DefaultHasher::new());
 
     let result = producer
         .send(
-            FutureRecord::to(&config.order_service_kafka_topic)
+            FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key)
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(
@@ -122,13 +123,13 @@ pub fn delete_good_from_order(
     bytes: web::Bytes,
     params: web::Path<(String, String, String)>,
     producer: web::Data<FutureProducer>,
-    config: web::Data<Config>,
+    kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
     let key = bytes.hash(&mut DefaultHasher::new());
 
     let result = producer
         .send(
-            FutureRecord::to(&config.order_service_kafka_topic)
+            FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key)
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(

@@ -6,14 +6,30 @@ use serde::Deserialize;
 mod appconfig;
 mod handlers;
 
-// TODO: maybe pass errors to highest layer?
+#[derive(Deserialize)]
+struct ServerOptions {
+    port: usize,
+    workers: usize,
+}
+
+#[derive(Deserialize)]
+struct KafkaProducerOptions {
+    brokers: String,
+    message_timeout: String,
+}
+
 #[derive(Clone, Deserialize)]
-pub struct Config {
-    server_port: String,
-    kafka_brokers: String,
-    kafka_message_timeout: String,
-    order_service_kafka_topic: String,
-    billing_service_kafka_topic: String,
+pub struct KafkaTopics {
+    orders_service_topic: String,
+    billing_service_topic: String,
+}
+
+// TODO: maybe pass errors to highest layer?
+#[derive(Deserialize)]
+struct Config {
+    server: ServerOptions,
+    kafka_producer: KafkaProducerOptions,
+    kafka_topics: KafkaTopics,
 }
 
 fn read_config(config_file_path: &str) -> Result<String, std::io::Error> {
@@ -52,27 +68,30 @@ fn main() {
         if let Some(config) = read_and_parse_config(config) {
             let sys = actix_rt::System::new("gateway");
             let producer: FutureProducer = ClientConfig::new()
-                .set("bootstrap.servers", &config.kafka_brokers)
-                .set("message.timeout.ms", &config.kafka_message_timeout)
+                .set("bootstrap.servers", &config.kafka_producer.brokers)
+                .set("message.timeout.ms", &config.kafka_producer.message_timeout)
                 .create()
                 .expect("Producer creation error");
-            let bind_addr = format!("0.0.0.0:{}", config.server_port);
+            let kafka_topics = config.kafka_topics.clone();
 
             let mut listen_fd = listenfd::ListenFd::from_env();
             let mut server = HttpServer::new(move || {
                 App::new()
-            .configure(appconfig::config_app)
-            .data(producer.clone())
-            .data(config.clone())
-            .wrap(Logger::new(
-                "ip: %a, date: %t, response code: %s, response size: %b (bytes), duration: %D (ms)",
-            ))
+                    .configure(appconfig::config_app)
+                    .data(producer.clone())
+                    .data(kafka_topics.clone())
+                    .wrap(Logger::new(
+                        "ip: %a, date: %t, response code: %s, response size: %b (bytes), duration: %D (ms)",
+                    ))
             });
 
             server = if let Some(l) = listen_fd.take_tcp_listener(0).unwrap() {
                 server.listen(l).unwrap()
             } else {
-                server.workers(4).bind(bind_addr).unwrap()
+                server
+                    .workers(config.server.workers)
+                    .bind(format!("0.0.0.0:{}", config.server.port))
+                    .unwrap()
             };
 
             server.start();
