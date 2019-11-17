@@ -1,10 +1,10 @@
 use crate::KafkaTopics;
 use actix_web::{web, HttpResponse};
+use crypto::digest::Digest;
+use crypto::sha2::Sha256;
 use futures::*;
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hash;
 
 pub fn get_orders() -> HttpResponse {
     // send to orders service api method
@@ -17,13 +17,16 @@ pub fn create_order(
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
-    let key = bytes.hash(&mut DefaultHasher::new());
+    let mut hasher = Sha256::new();
+    hasher.input(user_id.as_bytes());
+    hasher.input(bytes.as_ref());
+    let key = hasher.result_str();
 
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key)
-                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
                 .headers(OwnedHeaders::new().add("user_id", user_id.as_ref())),
             0,
         )
@@ -59,13 +62,16 @@ pub fn update_order(
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
-    let key = bytes.hash(&mut DefaultHasher::new());
+    let mut hasher = Sha256::new();
+    hasher.input(params.0.as_bytes());
+    hasher.input(params.1.as_bytes());
+    hasher.input(bytes.as_ref());
+    let key = hasher.result_str();
 
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
-                .key(&key)
-                .key(&key)
+                .key(&key[..])
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(
                     OwnedHeaders::new()
@@ -101,12 +107,17 @@ pub fn add_good_to_order(
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
-    let key = bytes.hash(&mut DefaultHasher::new());
+    let mut hasher = Sha256::new();
+    hasher.input(params.0.as_bytes());
+    hasher.input(params.1.as_bytes());
+    hasher.input(params.2.as_bytes());
+    hasher.input(bytes.as_ref());
+    let key = hasher.result_str();
 
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
-                .key(&key)
+                .key(&key[..])
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(
                     OwnedHeaders::new()
@@ -143,12 +154,17 @@ pub fn delete_good_from_order(
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
-    let key = bytes.hash(&mut DefaultHasher::new());
+    let mut hasher = Sha256::new();
+    hasher.input(params.0.as_bytes());
+    hasher.input(params.1.as_bytes());
+    hasher.input(params.2.as_bytes());
+    hasher.input(bytes.as_ref());
+    let key = hasher.result_str();
 
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
-                .key(&key)
+                .key(&key[..])
                 .payload(&String::from_utf8(bytes.to_vec()).unwrap())
                 .headers(
                     OwnedHeaders::new()

@@ -64,7 +64,7 @@ pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<Ord
                 };
 
                 info!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
-                      msg.key(), payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
+                      std::str::from_utf8(msg.key().unwrap()).unwrap(), payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
 
                 if let Some(headers) = msg.headers() {
                     for i in 0..headers.count() {
