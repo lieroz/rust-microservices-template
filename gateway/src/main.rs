@@ -3,6 +3,9 @@ use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
 use serde::Deserialize;
 
+#[macro_use]
+extern crate log;
+
 mod appconfig;
 mod handlers;
 

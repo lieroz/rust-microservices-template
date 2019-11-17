@@ -13,7 +13,7 @@ impl ClientContext for OrdersContext {}
 
 impl ConsumerContext for OrdersContext {
     fn pre_rebalance(&self, rebalance: &Rebalance) {
-        info!(
+        debug!(
             "thread id {:?}: Pre rebalance {:?}",
             std::thread::current().id(),
             rebalance
@@ -21,7 +21,7 @@ impl ConsumerContext for OrdersContext {
     }
 
     fn post_rebalance(&self, rebalance: &Rebalance) {
-        info!(
+        debug!(
             "thread id {:?}: Post rebalance {:?}",
             std::thread::current().id(),
             rebalance
@@ -33,7 +33,7 @@ impl ConsumerContext for OrdersContext {
         result: KafkaResult<()>,
         _offsets: *mut rdkafka_sys::RDKafkaTopicPartitionList,
     ) {
-        info!(
+        debug!(
             "thread id {:?}: Committing offsets: {:?}",
             std::thread::current().id(),
             result
@@ -50,30 +50,33 @@ pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<Ord
         match message {
             Err(_) => error!("Error while reading from stream."),
             Ok(Err(e)) => error!("Kafka error: {}", e),
-            Ok(Ok(m)) => {
-                let payload = match m.payload_view::<str>() {
-                    None => "",
+            Ok(Ok(msg)) => {
+                let payload = match msg.payload_view::<str>() {
+                    None => {
+                        warn!("empty payload came from kafka");
+                        continue;
+                    }
                     Some(Ok(s)) => s,
                     Some(Err(e)) => {
                         error!("Error while deserializing message payload: {:?}", e);
-                        ""
+                        continue;
                     }
                 };
 
-                info!("thread id: {:?}", std::thread::current().id());
                 info!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
-                      m.key(), payload, m.topic(), m.partition(), m.offset(), m.timestamp());
+                      msg.key(), payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
 
-                if let Some(headers) = m.headers() {
+                if let Some(headers) = msg.headers() {
                     for i in 0..headers.count() {
                         let header = headers.get(i).unwrap();
-                        let user_id = std::str::from_utf8(header.1).unwrap();
+                        let key = header.0;
+                        let value = std::str::from_utf8(header.1).unwrap();
 
-                        info!("  Header {:#?}: {:?}", header.0, user_id);
+                        info!("Header {}: {}", key, value);
                     }
                 }
 
-                consumer.commit_message(&m, CommitMode::Async).unwrap();
+                consumer.commit_message(&msg, CommitMode::Async).unwrap();
             }
         };
     }

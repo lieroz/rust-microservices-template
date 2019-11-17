@@ -29,14 +29,20 @@ pub fn make_billing(
         .wait();
 
     match result {
-        Ok(Ok(delivery)) => HttpResponse::Created().json(format!(
-            r#"{{"partition": "{}", "offset: "{}"}}"#,
-            delivery.0, delivery.1
-        )),
-        Ok(Err((error, message))) => HttpResponse::BadRequest().json(format!(
-            r#"{{"error": "{}", "message": "{:?}"}}"#,
-            error, message
-        )),
+        Ok(Ok(delivery)) => {
+            info!(
+                "Message sent to kafka: partition: {}, offset: {}",
+                delivery.0, delivery.1
+            );
+            HttpResponse::Created().finish()
+        }
+        Ok(Err((error, message))) => {
+            error!(
+                "Error occured while sending message to kafka: error: {}, message: {:?}",
+                error, message
+            );
+            HttpResponse::BadRequest().finish()
+        }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
