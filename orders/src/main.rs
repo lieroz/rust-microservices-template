@@ -1,5 +1,13 @@
 use actix_web::{middleware::Logger, App, HttpServer};
+use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
+use rdkafka::consumer::stream_consumer::StreamConsumer;
 use serde::Deserialize;
+use signal_hook::{iterator::Signals, SIGINT, SIGQUIT, SIGTERM};
+
+use std::sync::Arc;
+
+#[macro_use]
+extern crate log;
 
 mod appconfig;
 mod handlers;
@@ -51,7 +59,7 @@ fn read_and_parse_config(config_file_path: &str) -> Option<Config> {
 }
 
 fn main() {
-    std::env::set_var("RUST_LOG", "actix_web=debug");
+    std::env::set_var("RUST_LOG", "debug,rdkafka=debug,actix_web=debug");
     env_logger::init();
 
     let matches = clap::App::new("rsoi gateway")
@@ -68,15 +76,51 @@ fn main() {
     if let Some(config) = matches.value_of("config") {
         if let Some(config) = read_and_parse_config(config) {
             let mut handlers = vec![];
+            let mut consumers: Vec<Arc<StreamConsumer<kafka_consumer::OrdersContext>>> = vec![];
 
             for _ in 0..config.server.kafka_workers {
-                let kafka_consumer_options = config.kafka_consumer.clone();
+                let consumer: Arc<StreamConsumer<kafka_consumer::OrdersContext>> = Arc::new(
+                    ClientConfig::new()
+                        .set("group.id", &config.kafka_consumer.group_id)
+                        .set(
+                            "bootstrap.servers",
+                            &config.kafka_consumer.bootstrap_servers,
+                        )
+                        .set(
+                            "enable.partition.eof",
+                            &config.kafka_consumer.enable_partition_eof,
+                        )
+                        .set(
+                            "session.timeout.ms",
+                            &config.kafka_consumer.session_timeout_ms,
+                        )
+                        .set(
+                            "enable.auto.commit",
+                            &config.kafka_consumer.enable_auto_commit,
+                        )
+                        .set_log_level(RDKafkaLogLevel::Debug)
+                        .create_with_context(kafka_consumer::OrdersContext)
+                        .expect("Consumer creation failed"),
+                );
+                consumers.push(Arc::clone(&consumer));
+
                 let kafka_topics = config.kafka_topics.clone();
 
                 handlers.push(std::thread::spawn(move || {
-                    kafka_consumer::consume_and_process(kafka_consumer_options, kafka_topics)
+                    kafka_consumer::consume_and_process(kafka_topics, Arc::clone(&consumer))
                 }));
             }
+
+            let signals = Signals::new(&[SIGINT, SIGTERM, SIGQUIT]).unwrap();
+            let signal_handler = std::thread::spawn(move || {
+                for _ in signals.forever() {
+                    for consumer in consumers.iter() {
+                        consumer.stop();
+                    }
+
+                    break;
+                }
+            });
 
             let sys = actix_rt::System::new("orders");
 
@@ -100,6 +144,8 @@ fn main() {
 
             server.start();
             let _ = sys.run();
+
+            signal_handler.join().unwrap();
 
             for handler in handlers {
                 handler.join().unwrap();
