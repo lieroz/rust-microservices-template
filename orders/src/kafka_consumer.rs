@@ -1,3 +1,4 @@
+use crate::{KafkaConsumerOptions, KafkaTopics};
 use futures::stream::Stream;
 use rdkafka::client::ClientContext;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
@@ -6,13 +7,11 @@ use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaResult;
 use rdkafka::message::{Headers, Message};
 
-static ORDERS_TOPIC: &str = "orders";
+struct OrdersContext;
 
-struct CustomContext;
+impl ClientContext for OrdersContext {}
 
-impl ClientContext for CustomContext {}
-
-impl ConsumerContext for CustomContext {
+impl ConsumerContext for OrdersContext {
     fn pre_rebalance(&self, rebalance: &Rebalance) {
         println!("Pre rebalance {:?}", rebalance);
     }
@@ -30,21 +29,19 @@ impl ConsumerContext for CustomContext {
     }
 }
 
-pub fn consume_and_process() {
-    let consumer: StreamConsumer<CustomContext> = ClientConfig::new()
-        .set("group.id", "1")
-        .set("bootstrap.servers", "localhost:9092")
-        .set("enable.partition.eof", "false")
-        .set("session.timeout.ms", "6000")
-        .set("enable.auto.commit", "false")
-        //.set("statistics.interval.ms", "30000")
-        //.set("auto.offset.reset", "smallest")
+pub fn consume_and_process(options: KafkaConsumerOptions, topics: KafkaTopics) {
+    let consumer: StreamConsumer<OrdersContext> = ClientConfig::new()
+        .set("group.id", &options.group_id)
+        .set("bootstrap.servers", &options.bootstrap_servers)
+        .set("enable.partition.eof", &options.enable_partition_eof)
+        .set("session.timeout.ms", &options.session_timeout_ms)
+        .set("enable.auto.commit", &options.enable_auto_commit)
         .set_log_level(RDKafkaLogLevel::Debug)
-        .create_with_context(CustomContext)
+        .create_with_context(OrdersContext)
         .expect("Consumer creation failed");
 
     consumer
-        .subscribe(&[ORDERS_TOPIC])
+        .subscribe(&[&topics.orders_service_topic])
         .expect("Can't subscribe to specified topics");
 
     for message in consumer.start().wait() {
@@ -60,12 +57,14 @@ pub fn consume_and_process() {
                         ""
                     }
                 };
+                println!("thread id: {:?}", std::thread::current().id());
                 println!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
                       m.key(), payload, m.topic(), m.partition(), m.offset(), m.timestamp());
                 if let Some(headers) = m.headers() {
                     for i in 0..headers.count() {
                         let header = headers.get(i).unwrap();
-                        println!("  Header {:#?}: {:?}", header.0, header.1);
+                        let user_id = std::str::from_utf8(header.1).unwrap();
+                        println!("  Header {:#?}: {:?}", header.0, user_id);
                     }
                 }
                 consumer.commit_message(&m, CommitMode::Async).unwrap();

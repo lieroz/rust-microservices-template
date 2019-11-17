@@ -1,0 +1,15 @@
+[config]
+[server]
+port = 8081
+workers = 4
+kafka_workers = 3
+
+[kafka_consumer]
+group_id = '1'
+bootstrap_servers = 'localhost:9092'
+enable_partition_eof = 'false'
+session_timeout_ms = '6000'
+enable_auto_commit = 'false'
+
+[kafka_topics]
+orders_service_topic = 'orders'

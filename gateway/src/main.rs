@@ -24,7 +24,6 @@ pub struct KafkaTopics {
     billing_service_topic: String,
 }
 
-// TODO: maybe pass errors to highest layer?
 #[derive(Deserialize)]
 struct Config {
     server: ServerOptions,
@@ -40,6 +39,7 @@ fn parse_config(config: &str) -> Result<Config, toml::de::Error> {
     toml::from_str(config)
 }
 
+// TODO: maybe implement error handling?
 fn read_and_parse_config(config_file_path: &str) -> Option<Config> {
     if let Ok(config) = read_config(config_file_path) {
         if let Ok(config) = parse_config(&config) {
