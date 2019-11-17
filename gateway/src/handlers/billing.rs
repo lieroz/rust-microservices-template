@@ -22,7 +22,7 @@ pub fn make_billing(
         .send(
             FutureRecord::to(&kafka_topics.billing_service_topic)
                 .key(&key[..])
-                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
                 .headers(
                     OwnedHeaders::new()
                         .add("user_id", &params.0)

@@ -72,7 +72,7 @@ pub fn update_order(
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key[..])
-                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
                 .headers(
                     OwnedHeaders::new()
                         .add("user_id", &params.0)
@@ -118,7 +118,7 @@ pub fn add_good_to_order(
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key[..])
-                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
                 .headers(
                     OwnedHeaders::new()
                         .add("user_id", &params.0)
@@ -165,7 +165,7 @@ pub fn delete_good_from_order(
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key[..])
-                .payload(&String::from_utf8(bytes.to_vec()).unwrap())
+                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
                 .headers(
                     OwnedHeaders::new()
                         .add("user_id", &params.0)
