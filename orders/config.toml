@@ -3,6 +3,7 @@
 port = 8081
 workers = 4
 kafka_workers = 3
+log_level = 'debug'
 
 [kafka_consumer]
 group_id = '1'

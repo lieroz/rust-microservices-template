@@ -3,7 +3,6 @@ use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use serde::Deserialize;
 use signal_hook::{iterator::Signals, SIGINT, SIGQUIT, SIGTERM};
-
 use std::sync::Arc;
 
 #[macro_use]
@@ -18,6 +17,7 @@ struct ServerOptions {
     port: usize,
     workers: usize,
     kafka_workers: usize,
+    log_level: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -59,9 +59,6 @@ fn read_and_parse_config(config_file_path: &str) -> Option<Config> {
 }
 
 fn main() {
-    std::env::set_var("RUST_LOG", "debug,rdkafka=debug,actix_web=debug");
-    env_logger::init();
-
     let matches = clap::App::new("rsoi gateway")
         .arg(
             clap::Arg::with_name("config")
@@ -75,6 +72,9 @@ fn main() {
 
     if let Some(config) = matches.value_of("config") {
         if let Some(config) = read_and_parse_config(config) {
+            std::env::set_var("RUST_LOG", &config.server.log_level);
+            env_logger::init();
+
             let mut handlers = vec![];
             let mut consumers: Vec<Arc<StreamConsumer<kafka_consumer::OrdersContext>>> = vec![];
 

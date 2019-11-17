@@ -10,6 +10,7 @@ mod handlers;
 struct ServerOptions {
     port: usize,
     workers: usize,
+    log_level: String,
 }
 
 #[derive(Deserialize)]
@@ -50,9 +51,6 @@ fn read_and_parse_config(config_file_path: &str) -> Option<Config> {
 }
 
 fn main() {
-    std::env::set_var("RUST_LOG", "actix_web=debug");
-    env_logger::init();
-
     let matches = clap::App::new("rsoi gateway")
         .arg(
             clap::Arg::with_name("config")
@@ -66,6 +64,9 @@ fn main() {
 
     if let Some(config) = matches.value_of("config") {
         if let Some(config) = read_and_parse_config(config) {
+            std::env::set_var("RUST_LOG", &config.server.log_level);
+            env_logger::init();
+
             let sys = actix_rt::System::new("gateway");
             let producer: FutureProducer = ClientConfig::new()
                 .set("bootstrap.servers", &config.kafka_producer.brokers)

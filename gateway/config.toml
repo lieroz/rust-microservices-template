@@ -2,6 +2,7 @@
 [server]
 port = 8080
 workers = 4
+log_level = 'debug'
 
 [kafka_producer]
 brokers = 'localhost:9092'
