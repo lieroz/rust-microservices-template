@@ -5,6 +5,7 @@ use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaResult;
 use rdkafka::message::{Headers, Message};
+use serde_json::Value;
 use std::sync::Arc;
 
 pub struct OrdersContext;
@@ -76,6 +77,17 @@ pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<Ord
                     }
                 }
 
+                // TODO: this is a simple json validatior
+                // add insert to redis here HMSET ...
+                let v: Option<Value> = match serde_json::from_str(payload) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        error!("JSON validation error: {}", e);
+                        None
+                    }
+                };
+
+                println!("{:?}", v);
                 consumer.commit_message(&msg, CommitMode::Async).unwrap();
             }
         };
