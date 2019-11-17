@@ -1,0 +1,10 @@
+# server options
+server_port = '8080'
+
+# kafka options
+kafka_brokers = 'localhost:9092'
+kafka_message_timeout = '5000'
+
+# kafka topics
+order_service_kafka_topic = 'orders'
+billing_service_kafka_topic = 'billings'
