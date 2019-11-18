@@ -6,6 +6,8 @@ use signal_hook::{iterator::Signals, SIGINT, SIGQUIT, SIGTERM};
 use std::sync::Arc;
 
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate log;
 
 mod appconfig;

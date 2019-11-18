@@ -7,6 +7,7 @@ use rdkafka::error::KafkaResult;
 use rdkafka::message::{Headers, Message};
 use serde_json::Value;
 use std::sync::Arc;
+use valico::json_schema;
 
 pub struct OrdersContext;
 
@@ -42,10 +43,53 @@ impl ConsumerContext for OrdersContext {
     }
 }
 
+lazy_static! {
+    static ref VALIDATION_SCHEMA: Value = serde_json::from_str(
+        r#"
+        {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "number"
+                },
+                "goods": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "good_id": {
+                                "type": "number"
+                            },
+                            "price": {
+                                "type": "number"
+                            },
+                            "name": {
+                                "type": "string"
+                            },
+                            "description": {
+                                "type": "string"
+                            }
+                        },
+                        "required": ["good_id", "price", "name", "description"]
+                    }
+                }
+            },
+            "required": ["order_id", "goods"]
+        }"#,
+    )
+    .unwrap();
+}
+
 pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<OrdersContext>>) {
     consumer
         .subscribe(&[&topics.orders_service_topic])
         .expect("Can't subscribe to specified topics");
+
+    let mut scope = json_schema::Scope::new();
+    let validator = scope
+        .compile_and_return(VALIDATION_SCHEMA.clone(), true)
+        .ok()
+        .unwrap();
 
     for message in consumer.start().wait() {
         match message {
@@ -77,17 +121,14 @@ pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<Ord
                     }
                 }
 
-                // TODO: this is a simple json validatior
-                // add insert to redis here HMSET ...
-                let v: Option<Value> = match serde_json::from_str(payload) {
-                    Ok(v) => Some(v),
-                    Err(e) => {
-                        error!("JSON validation error: {}", e);
-                        None
+                match serde_json::from_str(payload) {
+                    Ok(value) => {
+                        info!("{:?}", value);
+                        info!("Is valid: {}", validator.validate(&value).is_valid());
                     }
+                    Err(error) => error!("JSON validation error: {}", error),
                 };
 
-                println!("{:?}", v);
                 consumer.commit_message(&msg, CommitMode::Async).unwrap();
             }
         };
