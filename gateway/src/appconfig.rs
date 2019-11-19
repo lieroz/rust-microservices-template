@@ -18,24 +18,21 @@ pub fn config_app(cfg: &mut web::ServiceConfig) {
             .service(
                 web::scope("/goods")
                     .service(web::resource("").route(web::get().to(get_goods)))
-                    .service(web::resource("/{id}").route(web::get().to(get_good_delailed))),
+                    .service(web::resource("/{good_id}").route(web::get().to(get_good_delailed))),
             )
             .service(
                 web::scope("/user/{user_id}")
                     .service(web::resource("/orders").route(web::get().to(get_orders)))
                     .service(web::resource("/order").route(web::post().to(create_order)))
                     .service(
-                        web::resource("/order/{id}")
+                        web::resource("/order/{order_id}")
                             .route(web::get().to(get_order_detailed))
-                            .route(web::put().to(update_order)),
+                            .route(web::put().to(update_order))
+                            .route(web::delete().to(delete_order)),
                     )
                     .service(
-                        web::resource("/order/{order_id}/good/{good_id}")
-                            .route(web::post().to(add_good_to_order))
-                            .route(web::delete().to(delete_good_from_order)),
-                    )
-                    .service(
-                        web::resource("/order/{id}/billing").route(web::post().to(make_billing)),
+                        web::resource("/order/{order_id}/billing")
+                            .route(web::post().to(make_billing)),
                     ),
             ),
     );
