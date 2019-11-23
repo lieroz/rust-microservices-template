@@ -27,7 +27,11 @@ pub fn create_order(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key)
                 .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
-                .headers(OwnedHeaders::new().add("user_id", user_id.as_ref())),
+                .headers(
+                    OwnedHeaders::new()
+                        .add("operation", "create")
+                        .add("user_id", user_id.as_ref()),
+                ),
             0,
         )
         .wait();
@@ -75,6 +79,7 @@ pub fn update_order(
                 .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
                 .headers(
                     OwnedHeaders::new()
+                        .add("operation", "update")
                         .add("user_id", &params.0)
                         .add("order_id", &params.1),
                 ),
@@ -120,6 +125,7 @@ pub fn delete_order(
                 .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
                 .headers(
                     OwnedHeaders::new()
+                        .add("operation", "delete")
                         .add("user_id", &params.0)
                         .add("order_id", &params.1),
                 ),

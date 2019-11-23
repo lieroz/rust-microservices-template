@@ -13,6 +13,7 @@ extern crate log;
 mod appconfig;
 mod handlers;
 mod kafka_consumer;
+mod validation_schema;
 
 #[derive(Deserialize)]
 struct ServerOptions {
