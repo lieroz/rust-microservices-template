@@ -1,11 +1,14 @@
+use crate::db::{delete_order, CreateOrder, UpdateOrder};
 use crate::validation_schema::{VALIDATION_SCHEMA_CREATE, VALIDATION_SCHEMA_UPDATE};
 use crate::KafkaTopics;
 use futures::stream::Stream;
+use r2d2_redis::{r2d2, RedisConnectionManager};
 use rdkafka::client::ClientContext;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaResult;
 use rdkafka::message::{Headers, Message};
+use std::collections::HashMap;
 use std::sync::Arc;
 use valico::json_schema::{schema, Scope};
 
@@ -43,7 +46,13 @@ impl ConsumerContext for OrdersContext {
     }
 }
 
-pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<OrdersContext>>) {
+// FIXME: remove all unwrap calls and decompose
+// make interfaces for testing
+pub fn consume_and_process(
+    topics: KafkaTopics,
+    consumer: Arc<StreamConsumer<OrdersContext>>,
+    pool: r2d2::Pool<RedisConnectionManager>,
+) {
     consumer
         .subscribe(&[&topics.orders_service_topic])
         .expect("Can't subscribe to specified topics");
@@ -83,7 +92,9 @@ pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<Ord
 
                 let mut operation: Option<&str> = None;
                 let mut validator: Option<&schema::ScopedSchema> = None;
+                let mut metadata = HashMap::new();
 
+                // TODO: move to separate function, getKafkaMessageMetadata
                 if let Some(headers) = msg.headers() {
                     for i in 0..headers.count() {
                         let header = headers.get(i).unwrap();
@@ -101,9 +112,9 @@ pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<Ord
                                 }
                             }
                             operation = Some(value);
+                        } else {
+                            metadata.insert(key, value);
                         }
-
-                        info!("Header {}: {}", key, value);
                     }
                 }
 
@@ -114,28 +125,38 @@ pub fn consume_and_process(topics: KafkaTopics, consumer: Arc<StreamConsumer<Ord
 
                 let operation = operation.unwrap();
 
-                match serde_json::from_str(payload) {
-                    Ok(value) => match validator {
-                        Some(validator) => {
-                            info!("{:?}", value);
-
-                            if validator.validate(&value).is_valid() {
-                                if operation == "create" {
-                                    info!("send to create method");
-                                } else if operation == "update" {
-                                    info!("send to update method");
+                // TODO: move to separate function, validateJSONAnd...
+                match validator {
+                    Some(validator) => {
+                        match serde_json::from_str(payload) {
+                            Ok(value) => {
+                                if validator.validate(&value).is_valid() {
+                                    if operation == "create" {
+                                        let order: CreateOrder =
+                                            serde_json::value::from_value(value).unwrap();
+                                        order.create(&mut pool.get().unwrap());
+                                    } else if operation == "update" {
+                                        let order: UpdateOrder =
+                                            serde_json::value::from_value(value).unwrap();
+                                        order
+                                            .update(metadata["order_id"], &mut pool.get().unwrap());
+                                    }
+                                } else {
+                                    error!("Error: invalid JSON schema: {}", value);
                                 }
                             }
+                            Err(error) => error!("Error: JSON validation: {}", error),
+                        };
+                    }
+                    None => {
+                        if operation == "delete" {
+                            delete_order(metadata["order_id"], &mut pool.get().unwrap());
                         }
-                        None => {
-                            if operation == "delete" {
-                                info!("send to delete method");
-                            }
-                        }
-                    },
-                    Err(error) => error!("Error: JSON validation: {}", error),
+                    }
                 };
 
+                // TODO: consumer commits only here, consider deleting all unwrap calls
+                // or making commits everywhere
                 consumer.commit_message(&msg, CommitMode::Async).unwrap();
             }
         };

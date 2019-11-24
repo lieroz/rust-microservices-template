@@ -7,32 +7,31 @@ lazy_static! {
         {
             "type": "object",
             "properties": {
-                "order_id": {
-                    "type": "number"
+                "id": {
+                    "type": "integer"
                 },
                 "goods": {
                     "type": "array",
+                    "uniqueItems": true,
+                    "minItems": 1,
                     "items": {
                         "type": "object",
                         "properties": {
-                            "good_id": {
-                                "type": "number"
+                            "id": {
+                                "type": "integer"
                             },
-                            "price": {
-                                "type": "number"
-                            },
-                            "name": {
-                                "type": "string"
-                            },
-                            "description": {
-                                "type": "string"
+                            "count": {
+                                "type": "integer",
+                                "minimum": 1
                             }
                         },
-                        "required": ["good_id", "price", "name", "description"]
+                        "required": ["id", "count"],
+                        "additionalProperties": false
                     }
                 }
             },
-            "required": ["order_id", "goods"]
+            "required": ["id", "goods"],
+            "additionalProperties": false
         }"#,
     )
     .unwrap();
@@ -44,32 +43,32 @@ lazy_static! {
         {
             "type": "object",
             "properties": {
-                "order_id": {
-                    "type": "number"
-                },
                 "goods": {
                     "type": "array",
+                    "uniqueItems": true,
+                    "minItems": 1,
                     "items": {
                         "type": "object",
                         "properties": {
-                            "good_id": {
-                                "type": "number"
+                            "id": {
+                                "type": "integer"
                             },
-                            "price": {
-                                "type": "number"
+                            "count": {
+                                "type": "integer",
+                                "minimum": 1
                             },
-                            "name": {
-                                "type": "string"
-                            },
-                            "description": {
-                                "type": "string"
+                            "operation": {
+                                "type": "string",
+                                "enum": ["add", "update", "delete"]
                             }
                         },
-                        "required": ["good_id"]
+                        "required": ["id", "count", "operation"],
+                        "additionalProperties": false
                     }
                 }
             },
-            "required": ["order_id", "goods"]
+            "required": ["goods"],
+            "additionalProperties": false
         }"#,
     )
     .unwrap();

@@ -1,17 +1,19 @@
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate log;
+
 use actix_web::{middleware::Logger, App, HttpServer};
+use r2d2_redis::{r2d2, RedisConnectionManager};
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use serde::Deserialize;
 use signal_hook::{iterator::Signals, SIGINT, SIGQUIT, SIGTERM};
 use std::sync::Arc;
 
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
-
+mod api;
 mod appconfig;
-mod handlers;
+mod db;
 mod kafka_consumer;
 mod validation_schema;
 
@@ -21,6 +23,7 @@ struct ServerOptions {
     workers: usize,
     kafka_workers: usize,
     log_level: String,
+    redis_connection_string: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -78,6 +81,10 @@ fn main() {
             std::env::set_var("RUST_LOG", &config.server.log_level);
             env_logger::init();
 
+            let manager =
+                RedisConnectionManager::new(&config.server.redis_connection_string[..]).unwrap();
+            let pool = r2d2::Pool::builder().build(manager).unwrap();
+
             let mut handlers = vec![];
             let mut consumers: Vec<Arc<StreamConsumer<kafka_consumer::OrdersContext>>> = vec![];
 
@@ -108,9 +115,10 @@ fn main() {
                 consumers.push(Arc::clone(&consumer));
 
                 let kafka_topics = config.kafka_topics.clone();
+                let pool = pool.clone();
 
                 handlers.push(std::thread::spawn(move || {
-                    kafka_consumer::consume_and_process(kafka_topics, Arc::clone(&consumer))
+                    kafka_consumer::consume_and_process(kafka_topics, Arc::clone(&consumer), pool)
                 }));
             }
 
@@ -128,9 +136,10 @@ fn main() {
             let sys = actix_rt::System::new("orders");
 
             let mut listen_fd = listenfd::ListenFd::from_env();
-            let mut server = HttpServer::new(|| {
+            let mut server = HttpServer::new(move || {
                 App::new()
                     .configure(appconfig::config_app)
+                    .data(pool.clone())
                     .wrap(Logger::new(
                     "ip: %a, date: %t, response code: %s, response size: %b (bytes), duration: %D (ms)",
                 ))
