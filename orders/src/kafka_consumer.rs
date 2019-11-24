@@ -134,12 +134,15 @@ pub fn consume_and_process(
                                     if operation == "create" {
                                         let order: CreateOrder =
                                             serde_json::value::from_value(value).unwrap();
-                                        order.create(&mut pool.get().unwrap());
+                                        order.create(metadata["user_id"], &mut pool.get().unwrap());
                                     } else if operation == "update" {
                                         let order: UpdateOrder =
                                             serde_json::value::from_value(value).unwrap();
-                                        order
-                                            .update(metadata["order_id"], &mut pool.get().unwrap());
+                                        order.update(
+                                            metadata["user_id"],
+                                            metadata["order_id"],
+                                            &mut pool.get().unwrap(),
+                                        );
                                     }
                                 } else {
                                     error!("Error: invalid JSON schema: {}", value);
@@ -150,7 +153,11 @@ pub fn consume_and_process(
                     }
                     None => {
                         if operation == "delete" {
-                            delete_order(metadata["order_id"], &mut pool.get().unwrap());
+                            delete_order(
+                                metadata["user_id"],
+                                metadata["order_id"],
+                                &mut pool.get().unwrap(),
+                            );
                         }
                     }
                 };
