@@ -16,9 +16,7 @@ pub fn config_app(cfg: &mut web::ServiceConfig) {
             .service(
                 web::scope("/user/{user_id}")
                     .service(web::resource("/orders").route(web::get().to(get_orders)))
-                    .service(
-                        web::resource("/order/{order_id}").route(web::get().to(get_order_detailed)),
-                    ),
+                    .service(web::resource("/order/{order_id}").route(web::get().to(get_order))),
             ),
     );
 }

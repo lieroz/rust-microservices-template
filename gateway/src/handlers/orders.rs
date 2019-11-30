@@ -139,7 +139,7 @@ pub fn delete_order(
                 "Message sent to kafka: partition: {}, offset: {}",
                 delivery.0, delivery.1
             );
-            HttpResponse::Created().finish()
+            HttpResponse::Ok().finish()
         }
         Ok(Err((error, message))) => {
             error!(
