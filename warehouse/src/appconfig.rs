@@ -1,6 +1,6 @@
 use actix_web::{web, HttpResponse};
 
-use crate::handlers::api::*;
+use crate::api::*;
 
 pub fn config_app(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -16,7 +16,7 @@ pub fn config_app(cfg: &mut web::ServiceConfig) {
             .service(
                 web::scope("/goods")
                     .service(web::resource("").route(web::get().to(get_goods)))
-                    .service(web::resource("/{id}").route(web::get().to(get_good_detailed))),
+                    .service(web::resource("/{good_id}").route(web::get().to(get_good))),
             ),
     );
 }

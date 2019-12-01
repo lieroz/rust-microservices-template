@@ -52,6 +52,6 @@ pub fn get_goods(
     HttpResponse::Ok().finish()
 }
 
-pub fn get_good_detailed(req: HttpRequest) -> HttpResponse {
+pub fn get_good(req: HttpRequest) -> HttpResponse {
     HttpResponse::Ok().finish()
 }
