@@ -71,22 +71,22 @@ pub fn consume_and_process(
 
     for message in consumer.start().wait() {
         match message {
-            Err(_) => error!("Error: can't read from kafka stream."),
+            Err(_) => error!("Can't read from kafka stream."),
             Ok(Err(e)) => error!("Error: kafka error: {}", e),
             Ok(Ok(msg)) => {
                 let payload = match msg.payload_view::<str>() {
                     None => {
-                        warn!("Warning: empty payload came from kafka");
+                        warn!("Empty payload came from kafka");
                         continue;
                     }
                     Some(Ok(s)) => s,
                     Some(Err(e)) => {
-                        error!("Error: can't deserialize message payload: {:?}", e);
+                        error!("Can't deserialize message payload: {:?}", e);
                         continue;
                     }
                 };
 
-                info!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+                debug!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
                       std::str::from_utf8(msg.key().unwrap()).unwrap(),
                       payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
 
@@ -107,7 +107,7 @@ pub fn consume_and_process(
                                 "update" => validator = Some(&update_validator),
                                 "delete" => validator = None,
                                 _ => {
-                                    error!("Error: unknown operation: {}", value);
+                                    error!("Unknown operation: {}", value);
                                     continue;
                                 }
                             }
@@ -119,7 +119,7 @@ pub fn consume_and_process(
                 }
 
                 if operation == None {
-                    warn!("Warning: operation header wasn't passed in kafka metadata");
+                    warn!("Operation header wasn't passed in kafka metadata");
                     continue;
                 }
 
@@ -145,10 +145,10 @@ pub fn consume_and_process(
                                         );
                                     }
                                 } else {
-                                    error!("Error: invalid JSON schema: {}", value);
+                                    error!("Invalid JSON schema: {}", value);
                                 }
                             }
-                            Err(error) => error!("Error: JSON validation: {}", error),
+                            Err(error) => error!("JSON validation: {}", error),
                         };
                     }
                     None => {

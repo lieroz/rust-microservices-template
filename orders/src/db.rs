@@ -40,17 +40,17 @@ impl CreateOrder {
                         for d in data {
                             match d {
                                 redis::Value::Int(i) if i == 1 => continue,
-                                value => error!("Error: redis returned invalid valud: {:?}", value),
+                                value => error!("Redis returned invalid valud: {:?}", value),
                             }
                         }
                     }
-                    value => error!("Error: redis server returned invalid value: {:?}", value),
+                    value => error!("Redis server returned invalid value: {:?}", value),
                 }
             } else {
-                error!("Error: order with id: {} already exists", redis_key);
+                error!("Order with id: {} already exists", redis_key);
             }
         } else {
-            error!("Error: redis returned invalid answer");
+            error!("Redis returned invalid answer");
         }
     }
 }
@@ -97,7 +97,7 @@ impl UpdateOrder {
                         "delete" => {
                             pipe.cmd("HDEL").arg(&[redis_key, good_id]);
                         }
-                        _ => warn!("Warning: unknown operation: {}", good.operation),
+                        _ => warn!("Unknown operation: {}", good.operation),
                     }
                 }
 
@@ -106,19 +106,17 @@ impl UpdateOrder {
                         for d in data {
                             match d {
                                 redis::Value::Int(_) => continue,
-                                value => {
-                                    error!("Error: redis should have returned Integer: {:?}", value)
-                                }
+                                value => error!("Redis should have returned Integer: {:?}", value),
                             }
                         }
                     }
-                    value => error!("Error: redis server returned invalid value: {:?}", value),
+                    value => error!("Redis server returned invalid value: {:?}", value),
                 }
             } else {
-                warn!("Warning: status is {}, order can't be updated", status);
+                warn!("Order status is {}, order can't be updated", status);
             }
         } else {
-            error!("Error: order with id: {} is not present", redis_key);
+            error!("Order with id: {} is not present", redis_key);
         }
     }
 }
@@ -136,7 +134,7 @@ pub fn delete_order(
         .unwrap()
     {
         if count == 0 {
-            warn!("Warning: order with id: {} couldn't be found", redis_key);
+            warn!("Order with id: {} couldn't be found", redis_key);
         }
     }
 }

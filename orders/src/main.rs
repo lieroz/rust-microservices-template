@@ -65,7 +65,7 @@ fn read_and_parse_config(config_file_path: &str) -> Option<Config> {
 }
 
 fn main() {
-    let matches = clap::App::new("rsoi gateway")
+    let matches = clap::App::new("rsoi orders")
         .arg(
             clap::Arg::with_name("config")
                 .short("c")

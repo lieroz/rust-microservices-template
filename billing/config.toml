@@ -1,0 +1,17 @@
+[config]
+[server]
+port = 8082
+workers = 4
+kafka_workers = 2
+log_level = 'debug'
+redis_connection_string = 'redis://localhost'
+
+[kafka_consumer]
+group_id = '3'
+bootstrap_servers = 'localhost:9092'
+enable_partition_eof = 'false'
+session_timeout_ms = '6000'
+enable_auto_commit = 'false'
+
+[kafka_topics]
+billing_service_topic = 'billings'

@@ -116,7 +116,7 @@ pub fn get_order(
     match redis::cmd("HGETALL").arg(redis_key).query(conn.deref_mut()) {
         Ok(redis::Value::Bulk(bulk)) => {
             if bulk.is_empty() {
-                warn!("Warning: order with id: {} wasn't found", redis_key);
+                warn!("Order with id: {} wasn't found", redis_key);
                 HttpResponse::NotFound().finish()
             } else {
                 let json = parse_redis_answer(bulk);
@@ -124,11 +124,11 @@ pub fn get_order(
             }
         }
         Ok(result) => {
-            error!("Error: redis returned invalid answer: {:?}", result);
+            error!("Redis returned invalid answer: {:?}", result);
             HttpResponse::InternalServerError().finish()
         }
         Err(error) => {
-            error!("Error: redis error: {}", error);
+            error!("Redis error: {}", error);
             HttpResponse::InternalServerError().finish()
         }
     }
