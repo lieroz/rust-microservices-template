@@ -28,11 +28,17 @@ pub struct KafkaTopics {
     billing_service_topic: String,
 }
 
+#[derive(Clone, Deserialize)]
+pub struct ServicesParams {
+    orders_service_addr: String,
+}
+
 #[derive(Deserialize)]
 struct Config {
     server: ServerOptions,
     kafka_producer: KafkaProducerOptions,
     kafka_topics: KafkaTopics,
+    services: ServicesParams,
 }
 
 fn read_config(config_file_path: &str) -> Result<String, std::io::Error> {
@@ -77,6 +83,7 @@ fn main() {
                 .create()
                 .expect("Producer creation error");
             let kafka_topics = config.kafka_topics.clone();
+            let services_params = config.services.clone();
 
             let mut listen_fd = listenfd::ListenFd::from_env();
             let mut server = HttpServer::new(move || {
@@ -84,6 +91,7 @@ fn main() {
                     .configure(appconfig::config_app)
                     .data(producer.clone())
                     .data(kafka_topics.clone())
+                    .data(services_params.clone())
                     .data(Client::default())
                     .wrap(Logger::new(
                         "ip: %a, date: %t, response code: %s, response size: %b (bytes), duration: %D (ms)",

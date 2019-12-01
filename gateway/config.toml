@@ -11,3 +11,6 @@ message_timeout = '5000'
 [kafka_topics]
 orders_service_topic = 'orders'
 billing_service_topic = 'billings'
+
+[services]
+orders_service_addr = 'localhost:8081'

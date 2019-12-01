@@ -1,24 +1,40 @@
-use crate::KafkaTopics;
-use actix_web::{client::Client, web, Error, HttpResponse};
+use crate::{KafkaTopics, ServicesParams};
+use actix_web::{client::Client, web, Error, HttpRequest, HttpResponse};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use futures::*;
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 
-pub fn get_orders(client: web::Data<Client>) -> impl Future<Item = HttpResponse, Error = Error> {
+fn client_request(client: &Client, path: &str) -> impl Future<Item = HttpResponse, Error = Error> {
     client
-        .get("http://localhost:8081/user/1/orders")
+        .get(path)
         .header("User-Agent", "Actix-web-gateway")
         .send()
         .from_err()
         .and_then(|mut response| {
-            println!("Response: {:?}", response);
-            response.body().from_err().and_then(|body| {
-                println!("{:?}", body);
-                HttpResponse::Ok().finish()
+            response.body().from_err().and_then(move |body| {
+                let json_str = std::str::from_utf8(&body).unwrap();
+                HttpResponse::Ok()
+                    .content_type("application/json")
+                    .body(format!("{}", json_str))
             })
         })
+}
+
+pub fn get_orders(
+    req: HttpRequest,
+    client: web::Data<Client>,
+    services_params: web::Data<ServicesParams>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    client_request(
+        &client,
+        &format!(
+            "http://{}{}",
+            services_params.orders_service_addr,
+            req.path()
+        ),
+    )
 }
 
 pub fn create_order(
@@ -65,9 +81,19 @@ pub fn create_order(
     }
 }
 
-pub fn get_order() -> HttpResponse {
-    // send to orders service api method
-    HttpResponse::Ok().finish()
+pub fn get_order(
+    req: HttpRequest,
+    client: web::Data<Client>,
+    services_params: web::Data<ServicesParams>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    client_request(
+        &client,
+        &format!(
+            "http://{}{}",
+            services_params.orders_service_addr,
+            req.path()
+        ),
+    )
 }
 
 pub fn update_order(
