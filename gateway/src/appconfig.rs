@@ -22,11 +22,11 @@ pub fn config_app(cfg: &mut web::ServiceConfig) {
             )
             .service(
                 web::scope("/user/{user_id}")
-                    .service(web::resource("/orders").route(web::get().to(get_orders)))
+                    .service(web::resource("/orders").route(web::get().to_async(get_orders)))
                     .service(web::resource("/order").route(web::post().to(create_order)))
                     .service(
                         web::resource("/order/{order_id}")
-                            .route(web::get().to(get_order_detailed))
+                            .route(web::get().to(get_order))
                             .route(web::put().to(update_order))
                             .route(web::delete().to(delete_order)),
                     )

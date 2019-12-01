@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use actix_web::{middleware::Logger, App, HttpServer};
+use actix_web::{client::Client, middleware::Logger, App, HttpServer};
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
 use serde::Deserialize;
@@ -84,6 +84,7 @@ fn main() {
                     .configure(appconfig::config_app)
                     .data(producer.clone())
                     .data(kafka_topics.clone())
+                    .data(Client::default())
                     .wrap(Logger::new(
                         "ip: %a, date: %t, response code: %s, response size: %b (bytes), duration: %D (ms)",
                     ))

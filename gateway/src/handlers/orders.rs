@@ -1,14 +1,24 @@
 use crate::KafkaTopics;
-use actix_web::{web, HttpResponse};
+use actix_web::{client::Client, web, Error, HttpResponse};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use futures::*;
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 
-pub fn get_orders() -> HttpResponse {
-    // send to orders service api method
-    HttpResponse::Ok().finish()
+pub fn get_orders(client: web::Data<Client>) -> impl Future<Item = HttpResponse, Error = Error> {
+    client
+        .get("http://localhost:8081/user/1/orders")
+        .header("User-Agent", "Actix-web-gateway")
+        .send()
+        .from_err()
+        .and_then(|mut response| {
+            println!("Response: {:?}", response);
+            response.body().from_err().and_then(|body| {
+                println!("{:?}", body);
+                HttpResponse::Ok().finish()
+            })
+        })
 }
 
 pub fn create_order(
@@ -55,7 +65,7 @@ pub fn create_order(
     }
 }
 
-pub fn get_order_detailed() -> HttpResponse {
+pub fn get_order() -> HttpResponse {
     // send to orders service api method
     HttpResponse::Ok().finish()
 }
