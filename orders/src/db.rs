@@ -17,13 +17,12 @@ pub struct CreateOrder {
 impl CreateOrder {
     pub fn create(&self, user_id: &str, conn: &mut r2d2::PooledConnection<RedisConnectionManager>) {
         let redis_key = &format!("user_id:{}:order_id:{}", user_id, self.id);
+        let result: Result<redis::Value, redis::RedisError> = redis::cmd("HGET")
+            .arg(&[redis_key, "status"])
+            .query(conn.deref_mut());
 
-        if let redis::Value::Bulk(bulk) = redis::cmd("HGETALL")
-            .arg(redis_key)
-            .query(conn.deref_mut())
-            .unwrap()
-        {
-            if bulk.is_empty() {
+        match result {
+            Ok(redis::Value::Nil) => {
                 let mut pipe = redis::pipe();
                 pipe.cmd("HSET").arg(&[redis_key, "status", "created"]);
 
@@ -46,11 +45,9 @@ impl CreateOrder {
                     }
                     value => error!("Redis server returned invalid value: {:?}", value),
                 }
-            } else {
-                error!("Order with id: {} already exists", redis_key);
             }
-        } else {
-            error!("Redis returned invalid answer");
+            Ok(value) => error!("Redis returned invalid answer on HSET cmd: {:?}", value),
+            Err(e) => error!("Error happened while executing HSET cmd: {}", e),
         }
     }
 }

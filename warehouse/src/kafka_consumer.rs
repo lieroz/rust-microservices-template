@@ -1,3 +1,4 @@
+use crate::db::CreateOrder;
 use crate::validation_schema::{VALIDATION_SCHEMA_CREATE, VALIDATION_SCHEMA_UPDATE};
 use crate::KafkaTopics;
 use futures::stream::Stream;
@@ -131,6 +132,9 @@ pub fn consume_and_process(
                             Ok(value) => {
                                 if validator.validate(&value).is_valid() {
                                     if operation == "create" {
+                                        let order: CreateOrder =
+                                            serde_json::value::from_value(value).unwrap();
+                                        order.create(metadata["user_id"], &mut pool.get().unwrap());
                                     } else if operation == "update" {
                                     }
                                 } else {
