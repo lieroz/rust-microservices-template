@@ -13,12 +13,18 @@ fn client_request(client: &Client, path: &str) -> impl Future<Item = HttpRespons
         .send()
         .from_err()
         .and_then(|mut response| {
-            response.body().from_err().and_then(move |body| {
-                let json_str = std::str::from_utf8(&body).unwrap();
-                HttpResponse::Ok()
-                    .content_type("application/json")
-                    .body(format!("{}", json_str))
-            })
+            response
+                .body()
+                .from_err()
+                .and_then(move |body| match std::str::from_utf8(&body) {
+                    Ok(s) => HttpResponse::Ok()
+                        .content_type("application/json")
+                        .body(format!("{}", s)),
+                    Err(e) => {
+                        error!("{}:Couldn't deserialize payload: {}", line!(), e);
+                        HttpResponse::InternalServerError().finish()
+                    }
+                })
         })
 }
 
@@ -48,11 +54,19 @@ pub fn create_order(
     hasher.input(bytes.as_ref());
     let key = hasher.result_str();
 
+    let payload = match std::str::from_utf8(bytes.as_ref()) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("{}:Couldn't deserialize payload: {}", line!(), e);
+            return HttpResponse::BadRequest().finish();
+        }
+    };
+
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key)
-                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
+                .payload(payload)
                 .headers(
                     OwnedHeaders::new()
                         .add("operation", "create")
@@ -72,8 +86,10 @@ pub fn create_order(
         }
         Ok(Err((error, message))) => {
             error!(
-                "Error occured while sending message to kafka: error: {}, message: {:?}",
-                error, message
+                "{}:Error occured while sending message to kafka: error: {}, message: {:?}",
+                line!(),
+                error,
+                message
             );
             HttpResponse::BadRequest().finish()
         }
@@ -108,11 +124,19 @@ pub fn update_order(
     hasher.input(bytes.as_ref());
     let key = hasher.result_str();
 
+    let payload = match std::str::from_utf8(bytes.as_ref()) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("{}:Couldn't deserialize payload: {}", line!(), e);
+            return HttpResponse::BadRequest().finish();
+        }
+    };
+
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key[..])
-                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
+                .payload(payload)
                 .headers(
                     OwnedHeaders::new()
                         .add("operation", "update")
@@ -133,8 +157,10 @@ pub fn update_order(
         }
         Ok(Err((error, message))) => {
             error!(
-                "Error occured while sending message to kafka: error: {}, message: {:?}",
-                error, message
+                "{}:Error occured while sending message to kafka: error: {}, message: {:?}",
+                line!(),
+                error,
+                message
             );
             HttpResponse::BadRequest().finish()
         }
@@ -154,11 +180,19 @@ pub fn delete_order(
     hasher.input(bytes.as_ref());
     let key = hasher.result_str();
 
+    let payload = match std::str::from_utf8(bytes.as_ref()) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("{}:Couldn't deserialize payload: {}", line!(), e);
+            return HttpResponse::BadRequest().finish();
+        }
+    };
+
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.orders_service_topic)
                 .key(&key[..])
-                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
+                .payload(payload)
                 .headers(
                     OwnedHeaders::new()
                         .add("operation", "delete")
@@ -179,8 +213,10 @@ pub fn delete_order(
         }
         Ok(Err((error, message))) => {
             error!(
-                "Error occured while sending message to kafka: error: {}, message: {:?}",
-                error, message
+                "{}:Error occured while sending message to kafka: error: {}, message: {:?}",
+                line!(),
+                error,
+                message
             );
             HttpResponse::BadRequest().finish()
         }

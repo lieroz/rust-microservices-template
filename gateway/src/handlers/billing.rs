@@ -18,11 +18,19 @@ pub fn make_billing(
     hasher.input(bytes.as_ref());
     let key = hasher.result_str();
 
+    let payload = match std::str::from_utf8(bytes.as_ref()) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("{}:Couldn't deserialize payload: {}", line!(), e);
+            return HttpResponse::BadRequest().finish();
+        }
+    };
+
     let result = producer
         .send(
             FutureRecord::to(&kafka_topics.billing_service_topic)
                 .key(&key[..])
-                .payload(std::str::from_utf8(bytes.as_ref()).unwrap())
+                .payload(payload)
                 .headers(
                     OwnedHeaders::new()
                         .add("user_id", &params.0)
@@ -42,8 +50,10 @@ pub fn make_billing(
         }
         Ok(Err((error, message))) => {
             error!(
-                "Error occured while sending message to kafka: error: {}, message: {:?}",
-                error, message
+                "{}:Error occured while sending message to kafka: error: {}, message: {:?}",
+                line!(),
+                error,
+                message
             );
             HttpResponse::BadRequest().finish()
         }
