@@ -15,40 +15,32 @@ pub struct CreateOrder {
 }
 
 impl CreateOrder {
-    pub fn create(&self, user_id: &str, conn: &mut r2d2::PooledConnection<RedisConnectionManager>) {
+    pub fn create(
+        &self,
+        user_id: &str,
+        conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let redis_key = &format!("user_id:{}:order_id:{}", user_id, self.id);
-        let result: Result<redis::Value, redis::RedisError> = redis::cmd("HGET")
+        let result = redis::cmd("HGET")
             .arg(&[redis_key, "status"])
-            .query(conn.deref_mut());
+            .query(conn.deref_mut())?;
 
-        match result {
-            Ok(redis::Value::Nil) => {
-                let mut pipe = redis::pipe();
-                pipe.cmd("HSET").arg(&[redis_key, "status", "created"]);
+        if let redis::Value::Nil = result {
+            let mut pipe = redis::pipe();
+            pipe.cmd("HSET").arg(&[redis_key, "status", "created"]);
 
-                for good in &self.goods {
-                    pipe.cmd("HSET").arg(&[
-                        redis_key,
-                        &format!("good_id:{}", good.id),
-                        &good.count.to_string(),
-                    ]);
-                }
-
-                match pipe.query(conn.deref_mut()).unwrap() {
-                    redis::Value::Bulk(data) => {
-                        for d in data {
-                            match d {
-                                redis::Value::Int(i) if i == 1 => continue,
-                                value => error!("Redis returned invalid valud: {:?}", value),
-                            }
-                        }
-                    }
-                    value => error!("Redis server returned invalid value: {:?}", value),
-                }
+            for good in &self.goods {
+                pipe.cmd("HSET").arg(&[
+                    redis_key,
+                    &format!("good_id:{}", good.id),
+                    &good.count.to_string(),
+                ]);
             }
-            Ok(value) => error!("Redis returned invalid answer on HSET cmd: {:?}", value),
-            Err(e) => error!("Error happened while executing HSET cmd: {}", e),
+
+            let _ = pipe.query(conn.deref_mut())?;
         }
+
+        Ok(())
     }
 }
 
@@ -70,15 +62,14 @@ impl UpdateOrder {
         user_id: &str,
         order_id: &str,
         conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
-    ) {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-
-        if let redis::Value::Data(status) = redis::cmd("HGET")
+        let result = redis::cmd("HGET")
             .arg(&[redis_key, "status"])
-            .query(conn.deref_mut())
-            .unwrap()
-        {
-            let status = std::str::from_utf8(&status).unwrap();
+            .query(conn.deref_mut())?;
+
+        if let redis::Value::Data(status) = result {
+            let status = std::str::from_utf8(&status)?;
 
             if status == "created" {
                 let mut pipe = redis::pipe();
@@ -94,27 +85,15 @@ impl UpdateOrder {
                         "delete" => {
                             pipe.cmd("HDEL").arg(&[redis_key, good_id]);
                         }
-                        _ => warn!("Unknown operation: {}", good.operation),
+                        _ => error!("Unknown operation: {}", good.operation),
                     }
                 }
 
-                match pipe.query(conn.deref_mut()).unwrap() {
-                    redis::Value::Bulk(data) => {
-                        for d in data {
-                            match d {
-                                redis::Value::Int(_) => continue,
-                                value => error!("Redis should have returned Integer: {:?}", value),
-                            }
-                        }
-                    }
-                    value => error!("Redis server returned invalid value: {:?}", value),
-                }
-            } else {
-                warn!("Order status is {}, order can't be updated", status);
+                let _ = pipe.query(conn.deref_mut())?;
             }
-        } else {
-            error!("Order with id: {} is not present", redis_key);
         }
+
+        Ok(())
     }
 }
 
@@ -122,16 +101,8 @@ pub fn delete_order(
     user_id: &str,
     order_id: &str,
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-
-    if let redis::Value::Int(count) = redis::cmd("DEL")
-        .arg(redis_key)
-        .query(conn.deref_mut())
-        .unwrap()
-    {
-        if count == 0 {
-            warn!("Order with id: {} couldn't be found", redis_key);
-        }
-    }
+    let _ = redis::cmd("DEL").arg(redis_key).query(conn.deref_mut())?;
+    Ok(())
 }

@@ -7,7 +7,7 @@ use rdkafka::client::ClientContext;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaResult;
-use rdkafka::message::{Headers, Message};
+use rdkafka::message::{BorrowedHeaders, Headers, Message};
 use std::collections::HashMap;
 use std::sync::Arc;
 use valico::json_schema::{schema, Scope};
@@ -46,6 +46,23 @@ impl ConsumerContext for OrdersContext {
     }
 }
 
+fn get_kafka_message_metadata<'a>(
+    headers: &'a Option<BorrowedHeaders>,
+) -> Result<HashMap<&'a str, &'a str>, Box<dyn std::error::Error>> {
+    let mut metadata = HashMap::new();
+
+    if let Some(headers) = headers {
+        for i in 0..headers.count() {
+            let header = headers.get(i).unwrap();
+            let key = header.0;
+            let value = std::str::from_utf8(header.1)?;
+            metadata.insert(key, value);
+        }
+    }
+
+    Ok(metadata)
+}
+
 // FIXME: remove all unwrap calls and decompose
 // make interfaces for testing
 pub fn consume_and_process(
@@ -60,13 +77,11 @@ pub fn consume_and_process(
     let mut create_scope = Scope::new();
     let create_validator = create_scope
         .compile_and_return(VALIDATION_SCHEMA_CREATE.clone(), true)
-        .ok()
         .unwrap();
 
     let mut update_scope = Scope::new();
     let update_validator = update_scope
         .compile_and_return(VALIDATION_SCHEMA_UPDATE.clone(), true)
-        .ok()
         .unwrap();
 
     for message in consumer.start().wait() {
@@ -76,7 +91,7 @@ pub fn consume_and_process(
             Ok(Ok(msg)) => {
                 let payload = match msg.payload_view::<str>() {
                     None => {
-                        warn!("Empty payload came from kafka");
+                        error!("Empty payload came from kafka");
                         continue;
                     }
                     Some(Ok(s)) => s,
@@ -134,15 +149,23 @@ pub fn consume_and_process(
                                     if operation == "create" {
                                         let order: CreateOrder =
                                             serde_json::value::from_value(value).unwrap();
-                                        order.create(metadata["user_id"], &mut pool.get().unwrap());
+                                        match order
+                                            .create(metadata["user_id"], &mut pool.get().unwrap())
+                                        {
+                                            Ok(_) => (),
+                                            Err(e) => error!("Error: {}", e),
+                                        }
                                     } else if operation == "update" {
                                         let order: UpdateOrder =
                                             serde_json::value::from_value(value).unwrap();
-                                        order.update(
+                                        match order.update(
                                             metadata["user_id"],
                                             metadata["order_id"],
                                             &mut pool.get().unwrap(),
-                                        );
+                                        ) {
+                                            Ok(_) => (),
+                                            Err(e) => error!("Error: {}", e),
+                                        }
                                     }
                                 } else {
                                     error!("Invalid JSON schema: {}", value);
@@ -153,11 +176,14 @@ pub fn consume_and_process(
                     }
                     None => {
                         if operation == "delete" {
-                            delete_order(
+                            match delete_order(
                                 metadata["user_id"],
                                 metadata["order_id"],
                                 &mut pool.get().unwrap(),
-                            );
+                            ) {
+                                Ok(_) => (),
+                                Err(e) => error!("Error: {}", e),
+                            }
                         }
                     }
                 };
