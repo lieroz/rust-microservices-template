@@ -207,8 +207,8 @@ pub fn get_order(
             error!("{}:Redis returned invalid answer: {:?}", line!(), result);
             HttpResponse::InternalServerError().finish()
         }
-        Err(error) => {
-            error!("{}:Redis error: {}", line!(), error);
+        Err(e) => {
+            error!("{}:Redis error: {}", line!(), e);
             HttpResponse::InternalServerError().finish()
         }
     }

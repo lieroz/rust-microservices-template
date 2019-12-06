@@ -85,7 +85,7 @@ impl UpdateOrder {
                         "delete" => {
                             pipe.cmd("HDEL").arg(&[redis_key, good_id]);
                         }
-                        _ => error!("Unknown operation: {}", good.operation),
+                        _ => error!("{}:Unknown operation: {}", line!(), good.operation),
                     }
                 }
 

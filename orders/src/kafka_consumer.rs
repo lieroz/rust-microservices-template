@@ -47,7 +47,7 @@ impl ConsumerContext for OrdersContext {
 }
 
 fn get_kafka_message_metadata<'a>(
-    headers: &'a Option<BorrowedHeaders>,
+    headers: &'a Option<&BorrowedHeaders>,
 ) -> Result<HashMap<&'a str, &'a str>, Box<dyn std::error::Error>> {
     let mut metadata = HashMap::new();
 
@@ -63,8 +63,46 @@ fn get_kafka_message_metadata<'a>(
     Ok(metadata)
 }
 
-// FIXME: remove all unwrap calls and decompose
-// make interfaces for testing
+fn process_operation(
+    validators: &HashMap<&str, schema::ScopedSchema>,
+    op: &str,
+    metadata: &HashMap<&str, &str>,
+    payload: &str,
+    pool: &r2d2::Pool<RedisConnectionManager>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match validators.get(op) {
+        None => delete_order(
+            metadata["user_id"],
+            metadata["order_id"],
+            &mut pool.get().unwrap(),
+        ),
+        Some(validator) => match serde_json::from_str(payload) {
+            Ok(value) => {
+                if validator.validate(&value).is_valid() {
+                    if op == "create" {
+                        let order: CreateOrder = serde_json::value::from_value(value).unwrap();
+                        order.create(metadata["user_id"], &mut pool.get().unwrap())
+                    } else if op == "update" {
+                        let order: UpdateOrder = serde_json::value::from_value(value).unwrap();
+                        order.update(
+                            metadata["user_id"],
+                            metadata["order_id"],
+                            &mut pool.get().unwrap(),
+                        )
+                    } else {
+                        error!("{}:Unknown operation: {}", line!(), op);
+                        Ok(())
+                    }
+                } else {
+                    error!("{}:Invalid JSON schema: {}", line!(), value);
+                    Ok(())
+                }
+            }
+            Err(e) => Err(Box::new(e)),
+        },
+    }
+}
+
 pub fn consume_and_process(
     topics: KafkaTopics,
     consumer: Arc<StreamConsumer<OrdersContext>>,
@@ -73,126 +111,65 @@ pub fn consume_and_process(
     consumer
         .subscribe(&[&topics.orders_service_topic])
         .expect("Can't subscribe to specified topics");
+    let mut validators = HashMap::new();
 
     let mut create_scope = Scope::new();
     let create_validator = create_scope
         .compile_and_return(VALIDATION_SCHEMA_CREATE.clone(), true)
         .unwrap();
+    validators.insert("create", create_validator);
 
     let mut update_scope = Scope::new();
     let update_validator = update_scope
         .compile_and_return(VALIDATION_SCHEMA_UPDATE.clone(), true)
         .unwrap();
+    validators.insert("update", update_validator);
 
     for message in consumer.start().wait() {
         match message {
-            Err(_) => error!("Can't read from kafka stream."),
-            Ok(Err(e)) => error!("Error: kafka error: {}", e),
+            Err(e) => error!("{}:Can't read from kafka stream: {:?}", line!(), e),
+            Ok(Err(e)) => error!("{}:Error: kafka error: {}", line!(), e),
             Ok(Ok(msg)) => {
-                let payload = match msg.payload_view::<str>() {
+                match msg.payload_view::<str>() {
                     None => {
-                        error!("Empty payload came from kafka");
-                        continue;
+                        error!("{}:Empty payload came from kafka", line!());
                     }
-                    Some(Ok(s)) => s,
-                    Some(Err(e)) => {
-                        error!("Can't deserialize message payload: {:?}", e);
-                        continue;
-                    }
-                };
+                    Some(Ok(payload)) => {
+                        debug!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+                              std::str::from_utf8(msg.key().unwrap()).unwrap(),
+                              payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
 
-                debug!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
-                      std::str::from_utf8(msg.key().unwrap()).unwrap(),
-                      payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
-
-                let mut operation: Option<&str> = None;
-                let mut validator: Option<&schema::ScopedSchema> = None;
-                let mut metadata = HashMap::new();
-
-                // TODO: move to separate function, getKafkaMessageMetadata
-                if let Some(headers) = msg.headers() {
-                    for i in 0..headers.count() {
-                        let header = headers.get(i).unwrap();
-                        let key = header.0;
-                        let value = std::str::from_utf8(header.1).unwrap();
-
-                        if key == "operation" {
-                            match value {
-                                "create" => validator = Some(&create_validator),
-                                "update" => validator = Some(&update_validator),
-                                "delete" => validator = None,
-                                _ => {
-                                    error!("Unknown operation: {}", value);
-                                    continue;
-                                }
-                            }
-                            operation = Some(value);
-                        } else {
-                            metadata.insert(key, value);
-                        }
-                    }
-                }
-
-                if operation == None {
-                    warn!("Operation header wasn't passed in kafka metadata");
-                    continue;
-                }
-
-                let operation = operation.unwrap();
-
-                // TODO: move to separate function, validateJSONAnd...
-                match validator {
-                    Some(validator) => {
-                        match serde_json::from_str(payload) {
-                            Ok(value) => {
-                                if validator.validate(&value).is_valid() {
-                                    if operation == "create" {
-                                        let order: CreateOrder =
-                                            serde_json::value::from_value(value).unwrap();
-                                        match order
-                                            .create(metadata["user_id"], &mut pool.get().unwrap())
-                                        {
-                                            Ok(_) => (),
-                                            Err(e) => error!("Error: {}", e),
-                                        }
-                                    } else if operation == "update" {
-                                        let order: UpdateOrder =
-                                            serde_json::value::from_value(value).unwrap();
-                                        match order.update(
-                                            metadata["user_id"],
-                                            metadata["order_id"],
-                                            &mut pool.get().unwrap(),
-                                        ) {
-                                            Ok(_) => (),
-                                            Err(e) => error!("Error: {}", e),
-                                        }
+                        match get_kafka_message_metadata(&msg.headers()) {
+                            Ok(metadata) => match metadata.get("operation") {
+                                Some(op) => {
+                                    match process_operation(
+                                        &validators,
+                                        op,
+                                        &metadata,
+                                        payload,
+                                        &pool,
+                                    ) {
+                                        Ok(_) => (),
+                                        Err(e) => error!("{}:Error: {}", line!(), e),
                                     }
-                                } else {
-                                    error!("Invalid JSON schema: {}", value);
                                 }
-                            }
-                            Err(error) => error!("JSON validation: {}", error),
-                        };
-                    }
-                    None => {
-                        if operation == "delete" {
-                            match delete_order(
-                                metadata["user_id"],
-                                metadata["order_id"],
-                                &mut pool.get().unwrap(),
-                            ) {
-                                Ok(_) => (),
-                                Err(e) => error!("Error: {}", e),
+                                None => {
+                                    error!("{}:Operation type wasn't passed in message", line!())
+                                }
+                            },
+                            Err(e) => {
+                                error!("{}:Can't parse kafka message headers: {}", line!(), e)
                             }
                         }
                     }
-                };
+                    Some(Err(e)) => {
+                        error!("{}:Can't deserialize message payload: {:?}", line!(), e)
+                    }
+                }
 
-                // TODO: consumer commits only here, consider deleting all unwrap calls
-                // or making commits everywhere
                 consumer.commit_message(&msg, CommitMode::Async).unwrap();
             }
-        };
+        }
     }
 
     info!(
