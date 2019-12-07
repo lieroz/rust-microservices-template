@@ -38,6 +38,8 @@ impl CreateOrder {
             }
 
             let _ = pipe.query(conn.deref_mut())?;
+        } else {
+            error!("{}:Order with id: {} already exists", line!(), self.id);
         }
 
         Ok(())
@@ -90,7 +92,16 @@ impl UpdateOrder {
                 }
 
                 let _ = pipe.query(conn.deref_mut())?;
+            } else {
+                error!(
+                    "{}:Order id: {} with status: {} can't be updated",
+                    line!(),
+                    order_id,
+                    status
+                );
             }
+        } else {
+            error!("{}:There is no order with id: {}", line!(), order_id);
         }
 
         Ok(())
