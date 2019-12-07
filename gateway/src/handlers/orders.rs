@@ -17,9 +17,16 @@ fn client_request(client: &Client, path: &str) -> impl Future<Item = HttpRespons
                 .body()
                 .from_err()
                 .and_then(move |body| match std::str::from_utf8(&body) {
-                    Ok(s) => HttpResponse::Ok()
-                        .content_type("application/json")
-                        .body(format!("{}", s)),
+                    Ok(s) => {
+                        println!("{:?}", response.status());
+                        if response.status() != actix_web::http::StatusCode::OK {
+                            HttpResponse::NotFound().finish()
+                        } else {
+                            HttpResponse::Ok()
+                                .content_type("application/json")
+                                .body(format!("{}", s))
+                        }
+                    }
                     Err(e) => {
                         error!("{}:Couldn't deserialize payload: {}", line!(), e);
                         HttpResponse::InternalServerError().finish()

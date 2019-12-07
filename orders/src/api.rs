@@ -159,18 +159,24 @@ pub fn get_orders(
         for x in data {
             if let redis::Value::Bulk(bulk) = x {
                 if let Some(mut json) = parse_redis_answer(bulk) {
-                    json.insert(
-                        "order_id".to_string(),
-                        Value::Number(serde_json::Number::from(keys.remove(0))),
-                    );
-                    result.push(json);
+                    if json["status"] != "deleted" {
+                        json.insert(
+                            "order_id".to_string(),
+                            Value::Number(serde_json::Number::from(keys.remove(0))),
+                        );
+                        result.push(json);
+                    }
                 } else {
                     return HttpResponse::InternalServerError().finish();
                 }
             }
         }
 
-        HttpResponse::Ok().json(result)
+        if result.is_empty() {
+            HttpResponse::NotFound().json(result)
+        } else {
+            HttpResponse::Ok().json(result)
+        }
     } else {
         HttpResponse::NotFound().finish()
     }
@@ -197,7 +203,11 @@ pub fn get_order(
                 HttpResponse::NotFound().finish()
             } else {
                 if let Some(json) = parse_redis_answer(bulk) {
-                    HttpResponse::Ok().json(json)
+                    if json["status"] != "deleted" {
+                        HttpResponse::Ok().json(json)
+                    } else {
+                        HttpResponse::NotFound().finish()
+                    }
                 } else {
                     HttpResponse::InternalServerError().finish()
                 }

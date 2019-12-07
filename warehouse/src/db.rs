@@ -31,7 +31,7 @@ impl CreateOrder {
                 .cmd("HSET")
                 .arg(&[redis_key, "validated", "false"])
                 .cmd("EXPIRE")
-                .arg(&[redis_key, "60"])
+                .arg(&[redis_key, "3600"])
                 .query(conn.deref_mut())?;
 
             pipe = redis::pipe();
@@ -64,7 +64,11 @@ impl CreateOrder {
                                     line!(),
                                     self.goods[i].id
                                 );
+                                return Ok(());
                             }
+                        } else {
+                            error!("{}:There is no good with id: {}", line!(), self.goods[i].id);
+                            return Ok(());
                         }
                     }
 
@@ -77,6 +81,12 @@ impl CreateOrder {
                     let _ = pipe.query(conn.deref_mut())?;
                 }
             }
+        } else {
+            warn!(
+                "{}:Order with id: {} is already validated",
+                line!(),
+                self.id
+            );
         }
 
         Ok(())

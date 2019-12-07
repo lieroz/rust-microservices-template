@@ -39,7 +39,7 @@ impl CreateOrder {
 
             let _ = pipe.query(conn.deref_mut())?;
         } else {
-            error!("{}:Order with id: {} already exists", line!(), self.id);
+            warn!("{}:Order with id: {} already exists", line!(), self.id);
         }
 
         Ok(())
@@ -114,6 +114,11 @@ pub fn delete_order(
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-    let _ = redis::cmd("DEL").arg(redis_key).query(conn.deref_mut())?;
+    let _ = redis::pipe()
+        .cmd("HSET")
+        .arg(&[redis_key, "status", "deleted"])
+        .cmd("EXPIRE")
+        .arg(&[redis_key, "3600"])
+        .query(conn.deref_mut())?;
     Ok(())
 }
