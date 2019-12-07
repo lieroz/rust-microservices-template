@@ -90,6 +90,11 @@ pub fn get_goods(
         for (i, x) in bulk.iter().enumerate() {
             if let redis::Value::Bulk(bulk) = x {
                 let mut good: Map<String, Value> = Map::new();
+                good.insert(
+                    "id".to_string(),
+                    Value::Number(serde_json::Number::from(keys[i])),
+                );
+
                 let mut j = 0;
 
                 while j < bulk.len() {
@@ -99,10 +104,6 @@ pub fn get_goods(
                         if let redis::Value::Data(data) = &bulk[j + 1] {
                             let value: u64 = std::str::from_utf8(data).unwrap().parse().unwrap();
 
-                            good.insert(
-                                "id".to_string(),
-                                Value::Number(serde_json::Number::from(keys[i])),
-                            );
                             good.insert(
                                 key.to_string(),
                                 Value::Number(serde_json::Number::from(value)),
@@ -144,6 +145,10 @@ pub fn get_good(
         .query(conn.deref_mut());
 
     let mut good: Map<String, Value> = Map::new();
+    good.insert(
+        "id".to_string(),
+        Value::Number(serde_json::Number::from(good_id.parse::<u64>().unwrap())),
+    );
 
     match result {
         Ok(x) => {
@@ -157,12 +162,6 @@ pub fn get_good(
                         if let redis::Value::Data(data) = &bulk[i + 1] {
                             let value: u64 = std::str::from_utf8(data).unwrap().parse().unwrap();
 
-                            good.insert(
-                                "id".to_string(),
-                                Value::Number(serde_json::Number::from(
-                                    good_id.parse::<u64>().unwrap(),
-                                )),
-                            );
                             good.insert(
                                 key.to_string(),
                                 Value::Number(serde_json::Number::from(value)),

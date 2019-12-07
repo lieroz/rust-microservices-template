@@ -1,4 +1,4 @@
-use crate::db::CreateOrder;
+use crate::db::{delete_order, CreateOrder, UpdateOrder};
 use crate::validation_schema::{VALIDATION_SCHEMA_CREATE, VALIDATION_SCHEMA_UPDATE};
 use crate::KafkaTopics;
 use futures::stream::Stream;
@@ -71,7 +71,11 @@ fn process_operation(
     pool: &r2d2::Pool<RedisConnectionManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match validators.get(op) {
-        None => Ok(()),
+        None => delete_order(
+            metadata["user_id"],
+            metadata["order_id"],
+            &mut pool.get().unwrap(),
+        ),
         Some(validator) => match serde_json::from_str(payload) {
             Ok(value) => {
                 if validator.validate(&value).is_valid() {
@@ -79,7 +83,12 @@ fn process_operation(
                         let order: CreateOrder = serde_json::value::from_value(value).unwrap();
                         order.create(metadata["user_id"], &mut pool.get().unwrap())
                     } else if op == "update" {
-                        Ok(())
+                        let order: UpdateOrder = serde_json::value::from_value(value).unwrap();
+                        order.update(
+                            metadata["user_id"],
+                            metadata["order_id"],
+                            &mut pool.get().unwrap(),
+                        )
                     } else {
                         error!("{}:Unknown operation: {}", line!(), op);
                         Ok(())

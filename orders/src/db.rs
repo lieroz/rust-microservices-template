@@ -80,8 +80,12 @@ impl UpdateOrder {
                     let good_id = &format!("good_id:{}", good.id);
 
                     match &good.operation[..] {
-                        "add" | "update" => {
+                        "add" => {
                             pipe.cmd("HSET")
+                                .arg(&[redis_key, good_id, &good.count.to_string()]);
+                        }
+                        "update" => {
+                            pipe.cmd("HINCRBY")
                                 .arg(&[redis_key, good_id, &good.count.to_string()]);
                         }
                         "delete" => {
@@ -114,11 +118,20 @@ pub fn delete_order(
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-    let _ = redis::pipe()
-        .cmd("HSET")
-        .arg(&[redis_key, "status", "deleted"])
-        .cmd("EXPIRE")
-        .arg(&[redis_key, "3600"])
+    let order = redis::cmd("HGETALL")
+        .arg(redis_key)
         .query(conn.deref_mut())?;
+
+    if let redis::Value::Bulk(_) = order {
+        let _ = redis::pipe()
+            .cmd("HSET")
+            .arg(&[redis_key, "status", "deleted"])
+            .cmd("EXPIRE")
+            .arg(&[redis_key, "3600"])
+            .query(conn.deref_mut())?;
+    } else {
+        error!("Order with id: '{}' wasn't found", order_id);
+    }
+
     Ok(())
 }
