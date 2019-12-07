@@ -7,7 +7,7 @@ use rdkafka::client::ClientContext;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaResult;
-use rdkafka::message::{Headers, Message};
+use rdkafka::message::{BorrowedHeaders, Headers, Message};
 use std::collections::HashMap;
 use std::sync::Arc;
 use valico::json_schema::{schema, Scope};
@@ -46,8 +46,43 @@ impl ConsumerContext for BillingContext {
     }
 }
 
-// FIXME: remove all unwrap calls and decompose
-// make interfaces for testing
+fn get_kafka_message_metadata<'a>(
+    headers: &'a Option<&BorrowedHeaders>,
+) -> Result<HashMap<&'a str, &'a str>, Box<dyn std::error::Error>> {
+    let mut metadata = HashMap::new();
+
+    if let Some(headers) = headers {
+        for i in 0..headers.count() {
+            let header = headers.get(i).unwrap();
+            let key = header.0;
+            let value = std::str::from_utf8(header.1)?;
+            metadata.insert(key, value);
+        }
+    }
+
+    Ok(metadata)
+}
+
+fn process_payload(
+    validator: &schema::ScopedSchema,
+    metadata: &HashMap<&str, &str>,
+    payload: &str,
+    pool: &r2d2::Pool<RedisConnectionManager>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match serde_json::from_str(payload) {
+        Ok(value) => {
+            if validator.validate(&value).is_valid() {
+                let billing: CreateBilling = serde_json::value::from_value(value)?;
+                billing.create(metadata["user_id"], metadata["order_id"], &mut pool.get()?)
+            } else {
+                error!("Error: invalid JSON schema: {}", value);
+                Ok(())
+            }
+        }
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
 pub fn consume_and_process(
     topics: KafkaTopics,
     consumer: Arc<StreamConsumer<BillingContext>>,
@@ -65,57 +100,37 @@ pub fn consume_and_process(
 
     for message in consumer.start().wait() {
         match message {
-            Err(_) => error!("Error: can't read from kafka stream."),
-            Ok(Err(e)) => error!("Error: kafka error: {}", e),
+            Err(e) => error!("{}:Error: can't read from kafka stream: {:?}", line!(), e),
+            Ok(Err(e)) => error!("{}:Error: kafka error: {}", line!(), e),
             Ok(Ok(msg)) => {
-                let payload = match msg.payload_view::<str>() {
+                match msg.payload_view::<str>() {
                     None => {
-                        warn!("Warning: empty payload came from kafka");
-                        continue;
+                        error!("{}:Error: empty payload came from kafka", line!());
                     }
-                    Some(Ok(s)) => s,
-                    Some(Err(e)) => {
-                        error!("Error: can't deserialize message payload: {:?}", e);
-                        continue;
-                    }
-                };
-
-                debug!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+                    Some(Ok(payload)) => {
+                        debug!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
                       std::str::from_utf8(msg.key().unwrap()).unwrap(),
                       payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
 
-                let mut metadata = HashMap::new();
-
-                // TODO: move to separate function, getKafkaMessageMetadata
-                if let Some(headers) = msg.headers() {
-                    for i in 0..headers.count() {
-                        let header = headers.get(i).unwrap();
-                        let key = header.0;
-                        let value = std::str::from_utf8(header.1).unwrap();
-                        metadata.insert(key, value);
-                    }
-                }
-
-                // TODO: move to separate function, validateJSONAnd...
-                match serde_json::from_str(payload) {
-                    Ok(value) => {
-                        if validator.validate(&value).is_valid() {
-                            let billing: CreateBilling =
-                                serde_json::value::from_value(value).unwrap();
-                            billing.create(
-                                metadata["user_id"],
-                                metadata["order_id"],
-                                &mut pool.get().unwrap(),
-                            );
-                        } else {
-                            error!("Error: invalid JSON schema: {}", value);
+                        match get_kafka_message_metadata(&msg.headers()) {
+                            Ok(metadata) => {
+                                match process_payload(&validator, &metadata, payload, &pool) {
+                                    Ok(_) => (),
+                                    Err(e) => error!("{}:Error: {}", line!(), e),
+                                }
+                            }
+                            Err(e) => error!("{}:Error: {}", line!(), e),
                         }
                     }
-                    Err(error) => error!("Error: JSON validation: {}", error),
+                    Some(Err(e)) => {
+                        error!(
+                            "{}:Error: can't deserialize message payload: {:?}",
+                            line!(),
+                            e
+                        );
+                    }
                 }
 
-                // TODO: consumer commits only here, consider deleting all unwrap calls
-                // or making commits everywhere
                 consumer.commit_message(&msg, CommitMode::Async).unwrap();
             }
         };
