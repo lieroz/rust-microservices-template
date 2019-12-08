@@ -1,8 +1,6 @@
 use actix_web::{web, HttpResponse};
 
-use crate::handlers::billing::*;
-use crate::handlers::orders::*;
-use crate::handlers::warehouse::*;
+use crate::api::*;
 
 pub fn config_app(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -17,8 +15,8 @@ pub fn config_app(cfg: &mut web::ServiceConfig) {
             )
             .service(
                 web::scope("/goods")
-                    .service(web::resource("").route(web::get().to(get_goods)))
-                    .service(web::resource("/{good_id}").route(web::get().to(get_good_delailed))),
+                    .service(web::resource("").route(web::get().to_async(get_goods)))
+                    .service(web::resource("/{good_id}").route(web::get().to_async(get_good))),
             )
             .service(
                 web::scope("/user/{user_id}")

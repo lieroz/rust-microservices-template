@@ -14,3 +14,4 @@ billing_service_topic = 'billings'
 
 [services]
 orders_service_addr = 'localhost:8081'
+warehouse_service_addr = 'localhost:8083'

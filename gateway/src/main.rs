@@ -6,8 +6,8 @@ use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
 use serde::Deserialize;
 
+mod api;
 mod appconfig;
-mod handlers;
 
 #[derive(Deserialize)]
 struct ServerOptions {
@@ -31,6 +31,7 @@ pub struct KafkaTopics {
 #[derive(Clone, Deserialize)]
 pub struct ServicesParams {
     orders_service_addr: String,
+    warehouse_service_addr: String,
 }
 
 #[derive(Deserialize)]

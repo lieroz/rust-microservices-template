@@ -80,12 +80,8 @@ impl UpdateOrder {
                     let good_id = &format!("good_id:{}", good.id);
 
                     match &good.operation[..] {
-                        "add" => {
+                        "add" | "update" => {
                             pipe.cmd("HSET")
-                                .arg(&[redis_key, good_id, &good.count.to_string()]);
-                        }
-                        "update" => {
-                            pipe.cmd("HINCRBY")
                                 .arg(&[redis_key, good_id, &good.count.to_string()]);
                         }
                         "delete" => {

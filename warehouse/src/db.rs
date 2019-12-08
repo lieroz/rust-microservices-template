@@ -125,18 +125,25 @@ impl UpdateOrder {
 
                 for good in &self.goods {
                     let good_id = &format!("good_id:{}", good.id);
+                    let count = redis::cmd("HGET")
+                        .arg(&[redis_key, good_id])
+                        .query(conn.deref_mut())?;
 
-                    match &good.operation[..] {
-                        "add" | "update" => {
-                            pipe.cmd("HINCRBY")
-                                .arg(&[good_id, "count", &good.count.to_string()]);
+                    if let redis::Value::Data(data) = count {
+                        let count: i64 = std::str::from_utf8(&data)?.parse()?;
+
+                        match &good.operation[..] {
+                            "add" | "update" => {
+                                let count = count - good.count;
+                                pipe.cmd("HINCRBY")
+                                    .arg(&[good_id, "count", &count.to_string()]);
+                            }
+                            "delete" => {
+                                pipe.cmd("HINCRBY")
+                                    .arg(&[good_id, "count", &count.to_string()]);
+                            }
+                            _ => error!("{}:Unknown operation: {}", line!(), good.operation),
                         }
-                        "delete" => {
-                            let count = -good.count;
-                            pipe.cmd("HINCRBY")
-                                .arg(&[good_id, "count", &count.to_string()]);
-                        }
-                        _ => error!("{}:Unknown operation: {}", line!(), good.operation),
                     }
                 }
 
