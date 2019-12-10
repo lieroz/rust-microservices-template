@@ -7,8 +7,10 @@ use rdkafka::client::ClientContext;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaResult;
-use rdkafka::message::{BorrowedHeaders, Headers, Message};
+use rdkafka::message::{BorrowedHeaders, Headers, Message, OwnedHeaders};
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
+use std::io::{Error, ErrorKind};
 use std::sync::Arc;
 use valico::json_schema::{schema, Scope};
 
@@ -69,33 +71,53 @@ fn process_operation(
     metadata: &HashMap<&str, &str>,
     payload: &str,
     pool: &r2d2::Pool<RedisConnectionManager>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(Option<serde_json::Value>, &'static str), Box<dyn std::error::Error>> {
     match validators.get(op) {
-        None => delete_order(
-            metadata["user_id"],
-            metadata["order_id"],
-            &mut pool.get().unwrap(),
-        ),
+        None => {
+            let _ = delete_order(
+                metadata["user_id"],
+                metadata["order_id"],
+                &mut pool.get().unwrap(),
+            )?;
+            Ok((None, "delete"))
+        }
         Some(validator) => match serde_json::from_str(payload) {
-            Ok(value) => {
+            Ok(mut value) => {
                 if validator.validate(&value).is_valid() {
                     if op == "create" {
-                        let order: CreateOrder = serde_json::value::from_value(value).unwrap();
-                        order.create(metadata["user_id"], &mut pool.get().unwrap())
+                        let order: CreateOrder =
+                            serde_json::value::from_value(value.clone()).unwrap();
+                        let order_id =
+                            order.create(metadata["user_id"], &mut pool.get().unwrap())?;
+                        value.as_object_mut().unwrap().insert(
+                            "id".to_string(),
+                            serde_json::Value::Number(serde_json::Number::from(order_id)),
+                        );
+                        Ok((Some(value), "create"))
                     } else if op == "update" {
-                        let order: UpdateOrder = serde_json::value::from_value(value).unwrap();
-                        order.update(
+                        let order: UpdateOrder =
+                            serde_json::value::from_value(value.clone()).unwrap();
+                        let _ = order.update(
                             metadata["user_id"],
                             metadata["order_id"],
                             &mut pool.get().unwrap(),
-                        )
+                        )?;
+                        value.as_object_mut().unwrap().insert(
+                            "id".to_string(),
+                            serde_json::Value::String(metadata["order_id"].to_string()),
+                        );
+                        Ok((Some(value), "update"))
                     } else {
-                        error!("{}:Unknown operation: {}", line!(), op);
-                        Ok(())
+                        Err(Box::new(Error::new(
+                            ErrorKind::Other,
+                            format!("{}:Unknown operation: {}", line!(), op),
+                        )))
                     }
                 } else {
-                    error!("{}:Invalid JSON schema: {}", line!(), value);
-                    Ok(())
+                    Err(Box::new(Error::new(
+                        ErrorKind::Other,
+                        format!("{}:Invalid JSON schema: {}", line!(), value),
+                    )))
                 }
             }
             Err(e) => Err(Box::new(e)),
@@ -105,6 +127,7 @@ fn process_operation(
 
 pub fn consume_and_process(
     topics: KafkaTopics,
+    producer: FutureProducer,
     consumer: Arc<StreamConsumer<OrdersContext>>,
     pool: r2d2::Pool<RedisConnectionManager>,
 ) {
@@ -149,7 +172,24 @@ pub fn consume_and_process(
                                         payload,
                                         &pool,
                                     ) {
-                                        Ok(_) => (),
+                                        Ok((value, op)) => {
+                                            let mut record: FutureRecord<String, String> =
+                                                FutureRecord::to(&topics.warehouse_service_topic)
+                                                    .headers(
+                                                        OwnedHeaders::new()
+                                                            .add("user_id", metadata["user_id"])
+                                                            .add("operation", op),
+                                                    );
+
+                                            let payload;
+
+                                            if let Some(value) = value {
+                                                payload = value.to_string();
+                                                record = record.payload(&payload);
+                                            }
+
+                                            let _ = producer.send(record, 0);
+                                        }
                                         Err(e) => error!("{}:Error: {}", line!(), e),
                                     }
                                 }

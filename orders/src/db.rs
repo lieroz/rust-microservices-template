@@ -2,6 +2,8 @@ use r2d2_redis::{r2d2, redis, RedisConnectionManager};
 use serde::Deserialize;
 use std::ops::DerefMut;
 
+const TX_EXPIRE: &str = "60";
+
 #[derive(Deserialize)]
 struct CreateGood {
     id: u64,
@@ -10,7 +12,6 @@ struct CreateGood {
 
 #[derive(Deserialize)]
 pub struct CreateOrder {
-    id: u64,
     goods: Vec<CreateGood>,
 }
 
@@ -19,30 +20,27 @@ impl CreateOrder {
         &self,
         user_id: &str,
         conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let redis_key = &format!("user_id:{}:order_id:{}", user_id, self.id);
-        let result = redis::cmd("HGET")
-            .arg(&[redis_key, "status"])
-            .query(conn.deref_mut())?;
+    ) -> Result<i64, Box<dyn std::error::Error>> {
+        let order_id = redis::cmd("INCR").arg("order_id").query(conn.deref_mut())?;
+        let redis_key = &format!("tx:user_id:{}:order_id:{}", order_id, user_id);
 
-        if let redis::Value::Nil = result {
-            let mut pipe = redis::pipe();
-            pipe.cmd("HSET").arg(&[redis_key, "status", "created"]);
+        let mut pipe = redis::pipe();
+        pipe.cmd("MULTI")
+            .cmd("HSET")
+            .arg(&[redis_key, "status", "new"]);
 
-            for good in &self.goods {
-                pipe.cmd("HSET").arg(&[
-                    redis_key,
-                    &format!("good_id:{}", good.id),
-                    &good.count.to_string(),
-                ]);
-            }
-
-            let _ = pipe.query(conn.deref_mut())?;
-        } else {
-            warn!("{}:Order with id: {} already exists", line!(), self.id);
+        for good in &self.goods {
+            pipe.cmd("HSET").arg(&[
+                redis_key,
+                &format!("good_id:{}", good.id),
+                &good.count.to_string(),
+            ]);
         }
 
-        Ok(())
+        pipe.cmd("EXPIRE").arg(&[redis_key, TX_EXPIRE]);
+        let _ = pipe.cmd("EXEC").query(conn.deref_mut())?;
+
+        Ok(order_id)
     }
 }
 
@@ -58,6 +56,16 @@ pub struct UpdateOrder {
     goods: Vec<UpdateGood>,
 }
 
+const EXEC_TX: &str = r#"
+    if redis.call('EXISTS', KEYS[2]) == 1 then
+        return { err = 'Transaction '..KEYS[2]..' already exists'}
+    end
+    local hash = redis.call('HGETALL', KEYS[1]);
+    if #hash == 0 then
+        return { err = 'The key '..KEYS[1]..' does not exist' }
+    end
+    return redis.call('HMSET', KEYS[2], unpack(hash))"#;
+
 impl UpdateOrder {
     pub fn update(
         &self,
@@ -65,43 +73,44 @@ impl UpdateOrder {
         order_id: &str,
         conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-        let result = redis::cmd("HGET")
-            .arg(&[redis_key, "status"])
+        let order_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
+        let tx_key = &format!("tx:{}", order_key);
+
+        let status: String = redis::cmd("EVAL")
+            .arg(&[EXEC_TX, "2", order_key, tx_key])
             .query(conn.deref_mut())?;
 
-        if let redis::Value::Data(status) = result {
-            let status = std::str::from_utf8(&status)?;
+        if status == "OK" {
+            let _ = redis::cmd("EXPIRE")
+                .arg(&[tx_key, TX_EXPIRE])
+                .query(conn.deref_mut())?;
 
-            if status == "created" {
-                let mut pipe = redis::pipe();
+            let mut pipe = redis::pipe();
 
-                for good in &self.goods {
-                    let good_id = &format!("good_id:{}", good.id);
+            for good in &self.goods {
+                let good_id = &format!("good_id:{}", good.id);
 
-                    match &good.operation[..] {
-                        "add" | "update" => {
-                            pipe.cmd("HSET")
-                                .arg(&[redis_key, good_id, &good.count.to_string()]);
-                        }
-                        "delete" => {
-                            pipe.cmd("HDEL").arg(&[redis_key, good_id]);
-                        }
-                        _ => error!("{}:Unknown operation: {}", line!(), good.operation),
+                match &good.operation[..] {
+                    "update" => {
+                        pipe.cmd("HSET")
+                            .arg(&[tx_key, good_id, &good.count.to_string()]);
+                    }
+                    "delete" => {
+                        pipe.cmd("HDEL").arg(&[tx_key, good_id]);
+                    }
+                    _ => {
+                        error!("line:{}: Unknown operation: {}", line!(), good.operation);
                     }
                 }
 
                 let _ = pipe.query(conn.deref_mut())?;
-            } else {
-                error!(
-                    "{}:Order id: {} with status: {} can't be updated",
-                    line!(),
-                    order_id,
-                    status
-                );
             }
         } else {
-            error!("{}:There is no order with id: {}", line!(), order_id);
+            error!(
+                "line:{}: Redis returned invalid status: {}",
+                line!(),
+                status
+            );
         }
 
         Ok(())
@@ -113,20 +122,23 @@ pub fn delete_order(
     order_id: &str,
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-    let order = redis::cmd("HGETALL")
-        .arg(redis_key)
+    let order_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
+    let tx_key = &format!("tx:{}", order_key);
+
+    let status: String = redis::cmd("EVAL")
+        .arg(&[EXEC_TX, "2", order_key, tx_key])
         .query(conn.deref_mut())?;
 
-    if let redis::Value::Bulk(_) = order {
-        let _ = redis::pipe()
-            .cmd("HSET")
-            .arg(&[redis_key, "status", "deleted"])
-            .cmd("EXPIRE")
-            .arg(&[redis_key, "3600"])
+    if status == "OK" {
+        let _ = redis::cmd("EXPIRE")
+            .arg(&[tx_key, TX_EXPIRE])
             .query(conn.deref_mut())?;
     } else {
-        error!("Order with id: '{}' wasn't found", order_id);
+        error!(
+            "line:{}: Redis returned invalid status: {}",
+            line!(),
+            status
+        );
     }
 
     Ok(())

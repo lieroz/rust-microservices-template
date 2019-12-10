@@ -5,8 +5,8 @@ workers = 4
 log_level = 'debug'
 
 [kafka_producer]
-brokers = 'localhost:9092'
-message_timeout = '5000'
+bootstrap_servers = 'localhost:9092'
+message_timeout_ms = '5000'
 
 [kafka_topics]
 orders_service_topic = 'orders'

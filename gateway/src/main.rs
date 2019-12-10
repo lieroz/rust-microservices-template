@@ -18,8 +18,8 @@ struct ServerOptions {
 
 #[derive(Deserialize)]
 struct KafkaProducerOptions {
-    brokers: String,
-    message_timeout: String,
+    bootstrap_servers: String,
+    message_timeout_ms: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -79,8 +79,14 @@ fn main() {
 
             let sys = actix_rt::System::new("gateway");
             let producer: FutureProducer = ClientConfig::new()
-                .set("bootstrap.servers", &config.kafka_producer.brokers)
-                .set("message.timeout.ms", &config.kafka_producer.message_timeout)
+                .set(
+                    "bootstrap.servers",
+                    &config.kafka_producer.bootstrap_servers,
+                )
+                .set(
+                    "message.timeout.ms",
+                    &config.kafka_producer.message_timeout_ms,
+                )
                 .create()
                 .expect("Producer creation error");
             let kafka_topics = config.kafka_topics.clone();

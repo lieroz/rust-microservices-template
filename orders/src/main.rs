@@ -7,6 +7,7 @@ use actix_web::{middleware::Logger, App, HttpServer};
 use r2d2_redis::{r2d2, RedisConnectionManager};
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::stream_consumer::StreamConsumer;
+use rdkafka::producer::FutureProducer;
 use serde::Deserialize;
 use signal_hook::{iterator::Signals, SIGINT, SIGQUIT, SIGTERM};
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 mod api;
 mod appconfig;
 mod db;
-mod kafka_consumer;
+mod kafka_processor;
 mod validation_schema;
 
 #[derive(Deserialize)]
@@ -36,13 +37,21 @@ pub struct KafkaConsumerOptions {
 }
 
 #[derive(Clone, Deserialize)]
+pub struct KafkaProducerOptions {
+    bootstrap_servers: String,
+    message_timeout_ms: String,
+}
+
+#[derive(Clone, Deserialize)]
 pub struct KafkaTopics {
     orders_service_topic: String,
+    warehouse_service_topic: String,
 }
 
 #[derive(Deserialize)]
 struct Config {
     server: ServerOptions,
+    kafka_producer: KafkaProducerOptions,
     kafka_consumer: KafkaConsumerOptions,
     kafka_topics: KafkaTopics,
 }
@@ -86,10 +95,10 @@ fn main() {
             let pool = r2d2::Pool::builder().build(manager).unwrap();
 
             let mut handlers = vec![];
-            let mut consumers: Vec<Arc<StreamConsumer<kafka_consumer::OrdersContext>>> = vec![];
+            let mut consumers: Vec<Arc<StreamConsumer<kafka_processor::OrdersContext>>> = vec![];
 
             for _ in 0..config.server.kafka_workers {
-                let consumer: Arc<StreamConsumer<kafka_consumer::OrdersContext>> = Arc::new(
+                let consumer: Arc<StreamConsumer<kafka_processor::OrdersContext>> = Arc::new(
                     ClientConfig::new()
                         .set("group.id", &config.kafka_consumer.group_id)
                         .set(
@@ -109,16 +118,32 @@ fn main() {
                             &config.kafka_consumer.enable_auto_commit,
                         )
                         .set_log_level(RDKafkaLogLevel::Debug)
-                        .create_with_context(kafka_consumer::OrdersContext)
+                        .create_with_context(kafka_processor::OrdersContext)
                         .expect("Consumer creation failed"),
                 );
                 consumers.push(Arc::clone(&consumer));
 
+                let producer: FutureProducer = ClientConfig::new()
+                    .set(
+                        "bootstrap.servers",
+                        &config.kafka_producer.bootstrap_servers,
+                    )
+                    .set(
+                        "message.timeout.ms",
+                        &config.kafka_producer.message_timeout_ms,
+                    )
+                    .create()
+                    .expect("Producer creation error");
                 let kafka_topics = config.kafka_topics.clone();
                 let pool = pool.clone();
 
                 handlers.push(std::thread::spawn(move || {
-                    kafka_consumer::consume_and_process(kafka_topics, Arc::clone(&consumer), pool)
+                    kafka_processor::consume_and_process(
+                        kafka_topics,
+                        producer,
+                        Arc::clone(&consumer),
+                        pool,
+                    )
                 }));
             }
 

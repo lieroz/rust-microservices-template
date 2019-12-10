@@ -7,9 +7,6 @@ lazy_static! {
         {
             "type": "object",
             "properties": {
-                "id": {
-                    "type": "integer"
-                },
                 "goods": {
                     "type": "array",
                     "uniqueItems": true,
@@ -30,7 +27,7 @@ lazy_static! {
                     }
                 }
             },
-            "required": ["id", "goods"],
+            "required": ["goods"],
             "additionalProperties": false
         }"#,
     )
@@ -59,7 +56,7 @@ lazy_static! {
                             },
                             "operation": {
                                 "type": "string",
-                                "enum": ["add", "update", "delete"]
+                                "enum": ["update", "delete"]
                             }
                         },
                         "required": ["id", "count", "operation"],
