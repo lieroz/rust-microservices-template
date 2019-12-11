@@ -46,6 +46,7 @@ pub struct KafkaProducerOptions {
 pub struct KafkaTopics {
     orders_service_topic: String,
     warehouse_service_topic: String,
+    transactions_topic: String,
 }
 
 #[derive(Deserialize)]
