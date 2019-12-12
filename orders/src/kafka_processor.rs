@@ -88,6 +88,7 @@ fn process_operation(
                     metadata["user_id"],
                     metadata["order_id"],
                     &mut pool.get().unwrap(),
+                    metadata["transaction"] == "delete",
                 )?;
                 Ok((None, "commit"))
             }
@@ -205,7 +206,7 @@ pub fn consume_and_process(
                                                         &topics.warehouse_service_topic,
                                                     );
 
-                                                let payload;
+                                                let mut payload = "".to_string();
                                                 let order_id;
 
                                                 if let Some(result) = result {
@@ -215,13 +216,11 @@ pub fn consume_and_process(
                                                     }
 
                                                     payload = result.1.to_string();
-                                                    record = record.payload(&payload);
                                                 }
 
                                                 headers =
                                                     headers.add("order_id", metadata["order_id"]);
-
-                                                record = record.headers(headers);
+                                                record = record.headers(headers).payload(&payload);
                                                 let _ = producer.send(record, 0);
                                             }
                                         }

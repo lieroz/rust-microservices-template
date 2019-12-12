@@ -76,12 +76,11 @@ fn process_operation(
         // TODO: this can be called via hashmap and command pattern
         None => match &op[..] {
             "delete" => {
-                // let _ = delete_order(
-                //     metadata["user_id"],
-                //     metadata["order_id"],
-                //     &mut pool.get().unwrap(),
-                // )?;
-                // Ok((None, "delete"))
+                let _ = delete_order(
+                    metadata["user_id"],
+                    metadata["order_id"],
+                    &mut pool.get().unwrap(),
+                )?;
                 Ok(None)
             }
             _ => Err(Box::new(Error::new(
@@ -176,7 +175,8 @@ pub fn consume_and_process(
                                 Some(op) => {
                                     let mut headers = OwnedHeaders::new()
                                         .add("user_id", metadata["user_id"])
-                                        .add("order_id", metadata["order_id"]);
+                                        .add("order_id", metadata["order_id"])
+                                        .add("transaction", *op);
 
                                     match process_operation(
                                         &validators,

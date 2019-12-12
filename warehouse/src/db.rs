@@ -246,36 +246,58 @@ pub fn delete_order(
     order_id: &str,
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-    let order = redis::cmd("HGETALL")
-        .arg(&[redis_key])
-        .query(conn.deref_mut())?;
+    let order_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
+    let tx_key = &format!("tx:{}", order_key);
+    let tx_exists: i32 = redis::cmd("EXISTS").arg(tx_key).query(conn.deref_mut())?;
 
-    let mut pipe = redis::pipe();
+    if tx_exists == 1 {
+        let order = redis::cmd("HGETALL")
+            .arg(&[tx_key])
+            .query(conn.deref_mut())?;
 
-    if let redis::Value::Bulk(bulk) = order {
-        let mut i = 0;
+        let mut pipe = redis::pipe();
 
-        while i < bulk.len() {
-            if let redis::Value::Data(data) = &bulk[i] {
-                let key = std::str::from_utf8(&data)?;
+        if let redis::Value::Bulk(bulk) = order {
+            let mut i = 0;
 
-                if key.contains("good_id") {
-                    if let redis::Value::Data(data) = &bulk[i + 1] {
-                        let value = std::str::from_utf8(&data)?;
+            while i < bulk.len() {
+                if let redis::Value::Data(data) = &bulk[i] {
+                    let key = std::str::from_utf8(&data)?;
 
-                        pipe.cmd("HINCRBY").arg(&[key, "count", value]);
-                        i += 2;
+                    if key.contains("good_id") {
+                        if let redis::Value::Data(data) = &bulk[i + 1] {
+                            let value = std::str::from_utf8(&data)?;
+
+                            pipe.cmd("HINCRBY").arg(&[key, "count", value]);
+                            i += 2;
+                        }
+                    } else {
+                        i += 1;
                     }
-                } else {
-                    i += 1;
                 }
             }
+        } else {
+            return Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "line:{}: Order with id: '{}' wasn't found",
+                    line!(),
+                    order_id
+                ),
+            )));
         }
+
+        let _ = pipe.query(conn.deref_mut())?;
     } else {
-        error!("Order with id: '{}' wasn't found", order_id);
+        return Err(Box::new(Error::new(
+            ErrorKind::Other,
+            format!(
+                "line:{}: Transaction with id: {} doesn't exist",
+                line!(),
+                tx_key
+            ),
+        )));
     }
 
-    let _ = pipe.query(conn.deref_mut())?;
     Ok(())
 }

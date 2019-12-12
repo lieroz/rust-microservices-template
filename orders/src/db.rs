@@ -164,31 +164,26 @@ pub fn commit_tx(
     user_id: &str,
     order_id: &str,
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
+    delete_order: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let order_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
     let tx_key = &format!("tx:{}", order_key);
 
-    let mut pipe = redis::pipe();
-    let _ = pipe
-        .cmd("MULTI")
-        .cmd("DEL")
-        .arg(order_key)
-        .cmd("EVAL")
-        .arg(&[EXEC_TX, "2", tx_key, order_key])
-        .cmd("EXEC")
-        .query(conn.deref_mut())?;
+    if delete_order {
+        let _ = redis::cmd("DEL").arg(order_key).query(conn.deref_mut())?;
+    } else {
+        let mut pipe = redis::pipe();
+        let _ = pipe
+            .cmd("MULTI")
+            .cmd("DEL")
+            .arg(order_key)
+            .cmd("EVAL")
+            .arg(&[EXEC_TX, "2", tx_key, order_key])
+            .cmd("EXEC")
+            .query(conn.deref_mut())?;
+    }
 
-    // if result.1 == "OK" {
     let _ = redis::cmd("DEL").arg(tx_key).query(conn.deref_mut())?;
+
     Ok(())
-    // } else {
-    //     Err(Box::new(Error::new(
-    //         ErrorKind::Other,
-    //         format!(
-    //             "line:{}: Redis returned invalid status: {}",
-    //             line!(),
-    //             result.1
-    //         ),
-    //     )))
-    // }
 }
