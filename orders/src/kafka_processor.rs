@@ -195,29 +195,35 @@ pub fn consume_and_process(
                                         &pool,
                                     ) {
                                         Ok((result, op)) => {
-                                            let mut headers = OwnedHeaders::new()
-                                                .add("user_id", metadata["user_id"])
-                                                .add("operation", op);
+                                            if op != "commit" && op != "rollout" {
+                                                let mut headers = OwnedHeaders::new()
+                                                    .add("user_id", metadata["user_id"])
+                                                    .add("operation", op);
 
-                                            let mut record: FutureRecord<String, String> =
-                                                FutureRecord::to(&topics.warehouse_service_topic);
+                                                let mut record: FutureRecord<String, String> =
+                                                    FutureRecord::to(
+                                                        &topics.warehouse_service_topic,
+                                                    );
 
-                                            let payload;
-                                            let order_id;
+                                                let payload;
+                                                let order_id;
 
-                                            if let Some(result) = result {
-                                                if let Some(id) = result.0 {
-                                                    order_id = id.to_string();
-                                                    headers = headers
-                                                        .add("order_id", &order_id.to_string());
+                                                if let Some(result) = result {
+                                                    if let Some(id) = result.0 {
+                                                        order_id = id.to_string();
+                                                        metadata.insert("order_id", &order_id);
+                                                    }
+
+                                                    payload = result.1.to_string();
+                                                    record = record.payload(&payload);
                                                 }
 
-                                                payload = result.1.to_string();
-                                                record = record.payload(&payload);
-                                            }
+                                                headers =
+                                                    headers.add("order_id", metadata["order_id"]);
 
-                                            record = record.headers(headers);
-                                            let _ = producer.send(record, 0);
+                                                record = record.headers(headers);
+                                                let _ = producer.send(record, 0);
+                                            }
                                         }
                                         Err(e) => error!("line:{}: Error: {}", line!(), e),
                                     }

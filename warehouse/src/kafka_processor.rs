@@ -90,7 +90,7 @@ fn process_operation(
             ))),
         },
         Some(validator) => match serde_json::from_str(payload) {
-            Ok(mut value) => {
+            Ok(value) => {
                 if validator.validate(&value).is_valid() {
                     match &op[..] {
                         "create" => {
@@ -103,15 +103,14 @@ fn process_operation(
                             Ok(Some(value))
                         }
                         "update" => {
-                            // let order: UpdateOrder =
-                            //     serde_json::value::from_value(value.clone()).unwrap();
-                            // let _ = order.update(
-                            //     metadata["user_id"],
-                            //     metadata["order_id"],
-                            //     &mut pool.get().unwrap(),
-                            // )?;
-                            // Ok((Some(value), "update"))
-                            Ok(None)
+                            let order: UpdateOrder =
+                                serde_json::value::from_value(value.clone()).unwrap();
+                            let _ = order.update(
+                                metadata["user_id"],
+                                metadata["order_id"],
+                                &mut pool.get().unwrap(),
+                            )?;
+                            Ok(Some(value))
                         }
                         _ => Err(Box::new(Error::new(
                             ErrorKind::Other,
@@ -196,7 +195,7 @@ pub fn consume_and_process(
                                     }
 
                                     let payload = "".to_string();
-                                    let mut record: FutureRecord<String, String> =
+                                    let record: FutureRecord<String, String> =
                                         FutureRecord::to(&topics.transactions_topic)
                                             .headers(headers)
                                             .payload(&payload);

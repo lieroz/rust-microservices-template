@@ -56,7 +56,7 @@ lazy_static! {
                             },
                             "operation": {
                                 "type": "string",
-                                "enum": ["add", "update", "delete"]
+                                "enum": ["update", "delete"]
                             }
                         },
                         "required": ["id", "count", "operation"],

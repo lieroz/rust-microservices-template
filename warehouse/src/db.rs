@@ -143,28 +143,63 @@ impl UpdateOrder {
                     redis::Value::Data(data) => {
                         let good = &self.goods[i];
                         let total: i64 = std::str::from_utf8(&data)?.parse()?;
-                        let diff = good.count
-                            - redis::cmd("HGET")
-                                .arg(&[order_key, &format!("good_id:{}", good.id)])
-                                .query::<i64>(conn.deref_mut())?;
+                        let order_good_count = match redis::cmd("HGET")
+                            .arg(&[order_key, &format!("good_id:{}", good.id)])
+                            .query(conn.deref_mut())?
+                        {
+                            redis::Value::Data(data) => {
+                                std::str::from_utf8(&data)?.parse::<i64>()?
+                            }
+                            redis::Value::Nil => 0,
+                            value => {
+                                return Err(Box::new(Error::new(
+                                    ErrorKind::Other,
+                                    format!(
+                                        "line:{}: Redis returned invalid value: {:?}",
+                                        line!(),
+                                        value
+                                    ),
+                                )));
+                            }
+                        };
 
-                        let count = total - diff;
-
-                        if count >= 0 {
-                            pipe.cmd("HINCRBY").arg(&[
-                                &format!("good_id:{}", good.id),
-                                "count",
-                                &diff.to_string(),
-                            ]);
-                        } else {
-                            return Err(Box::new(Error::new(
-                                ErrorKind::Other,
-                                format!(
-                                    "line:{}: Not enough good in warehouse with id: {}",
-                                    line!(),
-                                    self.goods[i].id
-                                ),
-                            )));
+                        match &good.operation[..] {
+                            "update" => {
+                                let diff = order_good_count - good.count;
+                                if total - diff >= 0 {
+                                    pipe.cmd("HINCRBY").arg(&[
+                                        &format!("good_id:{}", good.id),
+                                        "count",
+                                        &diff.to_string(),
+                                    ]);
+                                } else {
+                                    return Err(Box::new(Error::new(
+                                        ErrorKind::Other,
+                                        format!(
+                                            "line:{}: Not enough good in warehouse with id: {}",
+                                            line!(),
+                                            self.goods[i].id
+                                        ),
+                                    )));
+                                }
+                            }
+                            "delete" => {
+                                pipe.cmd("HINCRBY").arg(&[
+                                    &format!("good_id:{}", good.id),
+                                    "count",
+                                    &order_good_count.to_string(),
+                                ]);
+                            }
+                            _ => {
+                                return Err(Box::new(Error::new(
+                                    ErrorKind::Other,
+                                    format!(
+                                        "line:{}: Unknown operation: {}",
+                                        line!(),
+                                        good.operation
+                                    ),
+                                )));
+                            }
                         }
                     }
                     redis::Value::Nil => {
