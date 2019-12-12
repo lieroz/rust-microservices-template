@@ -145,43 +145,46 @@ pub fn get_good(
         .query(conn.deref_mut());
 
     let mut good: Map<String, Value> = Map::new();
-    good.insert(
-        "id".to_string(),
-        Value::Number(serde_json::Number::from(good_id.parse::<u64>().unwrap())),
-    );
 
     match result {
         Ok(x) => {
             if let redis::Value::Bulk(bulk) = x {
-                let mut i = 0;
+                if !bulk.is_empty() {
+                    good.insert(
+                        "id".to_string(),
+                        Value::Number(serde_json::Number::from(good_id.parse::<u64>().unwrap())),
+                    );
 
-                while i < bulk.len() {
-                    if let redis::Value::Data(data) = &bulk[i] {
-                        let key = std::str::from_utf8(data).unwrap();
+                    let mut i = 0;
 
-                        if let redis::Value::Data(data) = &bulk[i + 1] {
-                            let value: u64 = std::str::from_utf8(data).unwrap().parse().unwrap();
+                    while i < bulk.len() {
+                        if let redis::Value::Data(data) = &bulk[i] {
+                            let key = std::str::from_utf8(data).unwrap();
 
-                            good.insert(
-                                key.to_string(),
-                                Value::Number(serde_json::Number::from(value)),
-                            );
+                            if let redis::Value::Data(data) = &bulk[i + 1] {
+                                let value: u64 =
+                                    std::str::from_utf8(data).unwrap().parse().unwrap();
+
+                                good.insert(
+                                    key.to_string(),
+                                    Value::Number(serde_json::Number::from(value)),
+                                );
+                            }
                         }
-                    }
 
-                    i += 2;
+                        i += 2;
+                    }
+                    HttpResponse::Ok().json(good)
+                } else {
+                    HttpResponse::NotFound().finish()
                 }
+            } else {
+                HttpResponse::InternalServerError().finish()
             }
         }
         Err(e) => {
             error!("Error: {}", e);
-            return HttpResponse::InternalServerError().finish();
+            HttpResponse::InternalServerError().finish()
         }
-    }
-
-    if good.is_empty() {
-        HttpResponse::NotFound().finish()
-    } else {
-        HttpResponse::Ok().json(good)
     }
 }
