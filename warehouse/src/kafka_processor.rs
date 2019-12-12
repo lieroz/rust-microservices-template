@@ -1,4 +1,4 @@
-use crate::db::{commit_tx, delete_order, rollout_tx, CreateOrder, UpdateOrder};
+use crate::db::{delete_order, CreateOrder, UpdateOrder};
 use crate::validation_schema::{VALIDATION_SCHEMA_CREATE, VALIDATION_SCHEMA_UPDATE};
 use crate::KafkaTopics;
 use futures::stream::Stream;
@@ -14,11 +14,11 @@ use std::io::{Error, ErrorKind};
 use std::sync::Arc;
 use valico::json_schema::{schema, Scope};
 
-pub struct OrdersContext;
+pub struct WarehouseContext;
 
-impl ClientContext for OrdersContext {}
+impl ClientContext for WarehouseContext {}
 
-impl ConsumerContext for OrdersContext {
+impl ConsumerContext for WarehouseContext {
     fn pre_rebalance(&self, rebalance: &Rebalance) {
         debug!(
             "thread id {:?}: Pre rebalance {:?}",
@@ -68,36 +68,21 @@ fn get_kafka_message_metadata<'a>(
 fn process_operation(
     validators: &HashMap<&str, schema::ScopedSchema>,
     op: &str,
-    metadata: &mut HashMap<&str, &str>,
+    metadata: &HashMap<&str, &str>,
     payload: &str,
     pool: &r2d2::Pool<RedisConnectionManager>,
-) -> Result<(Option<(Option<i64>, serde_json::Value)>, &'static str), Box<dyn std::error::Error>> {
+) -> Result<Option<serde_json::Value>, Box<dyn std::error::Error>> {
     match validators.get(op) {
         // TODO: this can be called via hashmap and command pattern
         None => match &op[..] {
             "delete" => {
-                let _ = delete_order(
-                    metadata["user_id"],
-                    metadata["order_id"],
-                    &mut pool.get().unwrap(),
-                )?;
-                Ok((None, "delete"))
-            }
-            "commit" => {
-                let _ = commit_tx(
-                    metadata["user_id"],
-                    metadata["order_id"],
-                    &mut pool.get().unwrap(),
-                )?;
-                Ok((None, "commit"))
-            }
-            "rollout" => {
-                let _ = rollout_tx(
-                    metadata["user_id"],
-                    metadata["order_id"],
-                    &mut pool.get().unwrap(),
-                )?;
-                Ok((None, "rollout"))
+                // let _ = delete_order(
+                //     metadata["user_id"],
+                //     metadata["order_id"],
+                //     &mut pool.get().unwrap(),
+                // )?;
+                // Ok((None, "delete"))
+                Ok(None)
             }
             _ => Err(Box::new(Error::new(
                 ErrorKind::Other,
@@ -105,25 +90,28 @@ fn process_operation(
             ))),
         },
         Some(validator) => match serde_json::from_str(payload) {
-            Ok(value) => {
+            Ok(mut value) => {
                 if validator.validate(&value).is_valid() {
                     match &op[..] {
                         "create" => {
-                            let order: CreateOrder =
-                                serde_json::value::from_value(value.clone()).unwrap();
-                            let order_id =
-                                order.create(metadata["user_id"], &mut pool.get().unwrap())?;
-                            Ok((Some((Some(order_id), value)), "create"))
-                        }
-                        "update" => {
-                            let order: UpdateOrder =
-                                serde_json::value::from_value(value.clone()).unwrap();
-                            let _ = order.update(
+                            let order: CreateOrder = serde_json::value::from_value(value.clone())?;
+                            order.create(
                                 metadata["user_id"],
                                 metadata["order_id"],
                                 &mut pool.get().unwrap(),
                             )?;
-                            Ok((Some((None, value)), "update"))
+                            Ok(Some(value))
+                        }
+                        "update" => {
+                            // let order: UpdateOrder =
+                            //     serde_json::value::from_value(value.clone()).unwrap();
+                            // let _ = order.update(
+                            //     metadata["user_id"],
+                            //     metadata["order_id"],
+                            //     &mut pool.get().unwrap(),
+                            // )?;
+                            // Ok((Some(value), "update"))
+                            Ok(None)
                         }
                         _ => Err(Box::new(Error::new(
                             ErrorKind::Other,
@@ -145,11 +133,11 @@ fn process_operation(
 pub fn consume_and_process(
     topics: KafkaTopics,
     producer: FutureProducer,
-    consumer: Arc<StreamConsumer<OrdersContext>>,
+    consumer: Arc<StreamConsumer<WarehouseContext>>,
     pool: r2d2::Pool<RedisConnectionManager>,
 ) {
     consumer
-        .subscribe(&[&topics.orders_service_topic, &topics.transactions_topic])
+        .subscribe(&[&topics.warehouse_service_topic])
         .expect("Can't subscribe to specified topics");
     let mut validators = HashMap::new();
 
@@ -185,42 +173,35 @@ pub fn consume_and_process(
                         );
 
                         match get_kafka_message_metadata(&msg.headers()) {
-                            Ok(ref mut metadata) => match metadata.get("operation") {
+                            Ok(metadata) => match metadata.get("operation") {
                                 Some(op) => {
+                                    let mut headers = OwnedHeaders::new()
+                                        .add("user_id", metadata["user_id"])
+                                        .add("order_id", metadata["order_id"]);
+
                                     match process_operation(
                                         &validators,
                                         op,
-                                        metadata,
+                                        &metadata,
                                         payload,
                                         &pool,
                                     ) {
-                                        Ok((result, op)) => {
-                                            let mut headers = OwnedHeaders::new()
-                                                .add("user_id", metadata["user_id"])
-                                                .add("operation", op);
-
-                                            let mut record: FutureRecord<String, String> =
-                                                FutureRecord::to(&topics.warehouse_service_topic);
-
-                                            let payload;
-                                            let order_id;
-
-                                            if let Some(result) = result {
-                                                if let Some(id) = result.0 {
-                                                    order_id = id.to_string();
-                                                    headers = headers
-                                                        .add("order_id", &order_id.to_string());
-                                                }
-
-                                                payload = result.1.to_string();
-                                                record = record.payload(&payload);
-                                            }
-
-                                            record = record.headers(headers);
-                                            let _ = producer.send(record, 0);
+                                        Ok(_) => {
+                                            headers = headers.add("operation", "commit");
                                         }
-                                        Err(e) => error!("line:{}: Error: {}", line!(), e),
+                                        Err(e) => {
+                                            headers = headers.add("operation", "rollout");
+                                            error!("line:{}: Error: {}", line!(), e);
+                                        }
                                     }
+
+                                    let payload = "".to_string();
+                                    let mut record: FutureRecord<String, String> =
+                                        FutureRecord::to(&topics.transactions_topic)
+                                            .headers(headers)
+                                            .payload(&payload);
+
+                                    let _ = producer.send(record, 0);
                                 }
                                 None => error!(
                                     "line:{}: Operation type wasn't passed in message",

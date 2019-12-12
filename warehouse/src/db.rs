@@ -1,5 +1,6 @@
 use r2d2_redis::{r2d2, redis, RedisConnectionManager};
 use serde::Deserialize;
+use std::io::{Error, ErrorKind};
 use std::ops::DerefMut;
 
 #[derive(Deserialize)]
@@ -10,7 +11,6 @@ struct CreateGood {
 
 #[derive(Deserialize)]
 pub struct CreateOrder {
-    id: u64,
     goods: Vec<CreateGood>,
 }
 
@@ -18,38 +18,34 @@ impl CreateOrder {
     pub fn create(
         &self,
         user_id: &str,
+        order_id: &str,
         conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let redis_key = &format!("user_id:{}:order_id:{}", user_id, self.id);
-        let result = redis::cmd("HGET")
-            .arg(&[redis_key, "validated"])
-            .query(conn.deref_mut())?;
+        let tx_key = &format!("tx:user_id:{}:order_id:{}", user_id, order_id);
+        let tx_exists: i32 = redis::cmd("EXISTS").arg(tx_key).query(conn.deref_mut())?;
 
-        if let redis::Value::Nil = result {
+        if tx_exists == 1 {
             let mut pipe = redis::pipe();
-            let _ = pipe
-                .cmd("HSET")
-                .arg(&[redis_key, "validated", "false"])
-                .cmd("EXPIRE")
-                .arg(&[redis_key, "3600"])
-                .query(conn.deref_mut())?;
-
-            pipe = redis::pipe();
 
             for good in &self.goods {
                 pipe.cmd("HGET")
                     .arg(&[&format!("good_id:{}", good.id), "count"]);
             }
 
-            if let redis::Value::Bulk(bulk) = pipe.query(conn.deref_mut())? {
-                if bulk.is_empty() {
-                    error!("{}:There are no goods specified in order", line!());
-                } else {
-                    pipe = redis::pipe();
+            let goods: Vec<redis::Value> = pipe.query(conn.deref_mut())?;
 
-                    for (i, data) in bulk.iter().enumerate() {
-                        if let redis::Value::Data(data) = data {
-                            let count: i64 = std::str::from_utf8(&data).unwrap().parse().unwrap();
+            if goods.is_empty() {
+                return Err(Box::new(Error::new(
+                    ErrorKind::Other,
+                    format!("line:{}: There are no goods specified in order!", line!()),
+                )));
+            } else {
+                pipe = redis::pipe();
+
+                for (i, data) in goods.iter().enumerate() {
+                    match data {
+                        redis::Value::Data(data) => {
+                            let count: i64 = std::str::from_utf8(&data)?.parse()?;
                             let good = &self.goods[i];
 
                             if count >= good.count {
@@ -59,34 +55,50 @@ impl CreateOrder {
                                     &(count - good.count).to_string(),
                                 ]);
                             } else {
-                                error!(
-                                    "{}:Not enough good in warehouse with id: {}",
+                                return Err(Box::new(Error::new(
+                                    ErrorKind::Other,
+                                    format!(
+                                        "line:{}: Not enough good in warehouse with id: {}",
+                                        line!(),
+                                        self.goods[i].id
+                                    ),
+                                )));
+                            }
+                        }
+                        redis::Value::Nil => {
+                            return Err(Box::new(Error::new(
+                                ErrorKind::Other,
+                                format!(
+                                    "line:{}: There is no good with id: {}",
                                     line!(),
                                     self.goods[i].id
-                                );
-                                return Ok(());
-                            }
-                        } else {
-                            error!("{}:There is no good with id: {}", line!(), self.goods[i].id);
-                            return Ok(());
+                                ),
+                            )));
+                        }
+                        value => {
+                            return Err(Box::new(Error::new(
+                                ErrorKind::Other,
+                                format!(
+                                    "line:{}: Redis returned invalid value: {:?}",
+                                    line!(),
+                                    value
+                                ),
+                            )));
                         }
                     }
-
-                    let _ = pipe
-                        .cmd("HSET")
-                        .arg(&[redis_key, "validated", "true"])
-                        .cmd("PERSIST")
-                        .arg(redis_key)
-                        .query(conn.deref_mut())?;
-                    let _ = pipe.query(conn.deref_mut())?;
                 }
+
+                let _ = pipe.query(conn.deref_mut())?;
             }
         } else {
-            warn!(
-                "{}:Order with id: {} is already validated",
-                line!(),
-                self.id
-            );
+            return Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "line:{}: Transaction with id: {} doesn't exist",
+                    line!(),
+                    tx_key
+                ),
+            )));
         }
 
         Ok(())
@@ -112,52 +124,82 @@ impl UpdateOrder {
         order_id: &str,
         conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let redis_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
-        let result = redis::cmd("HGET")
-            .arg(&[redis_key, "status"])
-            .query(conn.deref_mut())?;
+        let order_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
+        let tx_key = &format!("tx:{}", order_key);
+        let tx_exists: i32 = redis::cmd("EXISTS").arg(tx_key).query(conn.deref_mut())?;
 
-        if let redis::Value::Data(status) = result {
-            let status = std::str::from_utf8(&status)?;
+        if tx_exists == 1 {
+            let mut pipe = redis::pipe();
 
-            if status == "created" {
-                let mut pipe = redis::pipe();
+            for good in &self.goods {
+                pipe.cmd("HGET")
+                    .arg(&[&format!("good_id:{}", good.id), "count"]);
+            }
 
-                for good in &self.goods {
-                    let good_id = &format!("good_id:{}", good.id);
-                    let count = redis::cmd("HGET")
-                        .arg(&[redis_key, good_id])
-                        .query(conn.deref_mut())?;
+            let goods: Vec<redis::Value> = pipe.query(conn.deref_mut())?;
 
-                    if let redis::Value::Data(data) = count {
-                        let count: i64 = std::str::from_utf8(&data)?.parse()?;
+            for (i, data) in goods.iter().enumerate() {
+                match data {
+                    redis::Value::Data(data) => {
+                        let good = &self.goods[i];
+                        let total: i64 = std::str::from_utf8(&data)?.parse()?;
+                        let diff = good.count
+                            - redis::cmd("HGET")
+                                .arg(&[order_key, &format!("good_id:{}", good.id)])
+                                .query::<i64>(conn.deref_mut())?;
 
-                        match &good.operation[..] {
-                            "add" | "update" => {
-                                let count = count - good.count;
-                                pipe.cmd("HINCRBY")
-                                    .arg(&[good_id, "count", &count.to_string()]);
-                            }
-                            "delete" => {
-                                pipe.cmd("HINCRBY")
-                                    .arg(&[good_id, "count", &count.to_string()]);
-                            }
-                            _ => error!("{}:Unknown operation: {}", line!(), good.operation),
+                        let count = total - diff;
+
+                        if count >= 0 {
+                            pipe.cmd("HINCRBY").arg(&[
+                                &format!("good_id:{}", good.id),
+                                "count",
+                                &diff.to_string(),
+                            ]);
+                        } else {
+                            return Err(Box::new(Error::new(
+                                ErrorKind::Other,
+                                format!(
+                                    "line:{}: Not enough good in warehouse with id: {}",
+                                    line!(),
+                                    self.goods[i].id
+                                ),
+                            )));
                         }
                     }
+                    redis::Value::Nil => {
+                        return Err(Box::new(Error::new(
+                            ErrorKind::Other,
+                            format!(
+                                "line:{}: There is no good with id: {}",
+                                line!(),
+                                self.goods[i].id
+                            ),
+                        )));
+                    }
+                    value => {
+                        return Err(Box::new(Error::new(
+                            ErrorKind::Other,
+                            format!(
+                                "line:{}: Redis returned invalid value: {:?}",
+                                line!(),
+                                value
+                            ),
+                        )));
+                    }
                 }
-
-                let _ = pipe.query(conn.deref_mut())?;
-            } else {
-                error!(
-                    "{}:Order id: {} with status: {} can't be updated",
-                    line!(),
-                    order_id,
-                    status
-                );
             }
+
+            let _ = pipe.query(conn.deref_mut())?;
         } else {
-            error!("{}:There is no order with id: {}", line!(), order_id);
+            return Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "line:{}: Transaction with id: {} doesn't exist",
+                    line!(),
+                    tx_key
+                ),
+            )));
         }
 
         Ok(())

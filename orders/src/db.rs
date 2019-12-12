@@ -98,7 +98,7 @@ impl UpdateOrder {
                     _ => {
                         // consider making one place to execute this code
                         // right now it looks like crutch
-                        let _ = redis::cmd("HDEL").arg(&[tx_key]).query(conn.deref_mut())?;
+                        let _ = redis::cmd("DEL").arg(tx_key).query(conn.deref_mut())?;
                         return Err(Box::new(Error::new(
                             ErrorKind::Other,
                             format!("line:{}: Unknown operation: {}", line!(), good.operation),
@@ -109,7 +109,7 @@ impl UpdateOrder {
                 let _ = pipe.query(conn.deref_mut())?;
             }
         } else {
-            let _ = redis::cmd("HDEL").arg(&[tx_key]).query(conn.deref_mut())?;
+            let _ = redis::cmd("DEL").arg(tx_key).query(conn.deref_mut())?;
             return Err(Box::new(Error::new(
                 ErrorKind::Other,
                 format!(
@@ -156,7 +156,7 @@ pub fn rollout_tx(
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let tx_key = &format!("tx:user_id:{}:order_id:{}", user_id, order_id);
-    let _ = redis::cmd("HDEL").arg(&[tx_key]).query(conn.deref_mut())?;
+    let _ = redis::cmd("DEL").arg(tx_key).query(conn.deref_mut())?;
     Ok(())
 }
 
@@ -169,26 +169,26 @@ pub fn commit_tx(
     let tx_key = &format!("tx:{}", order_key);
 
     let mut pipe = redis::pipe();
-    let result: (i32, String) = pipe
+    let _ = pipe
         .cmd("MULTI")
-        .cmd("HDEL")
-        .arg(&[order_key])
+        .cmd("DEL")
+        .arg(order_key)
         .cmd("EVAL")
         .arg(&[EXEC_TX, "2", tx_key, order_key])
         .cmd("EXEC")
         .query(conn.deref_mut())?;
 
-    if result.1 == "OK" {
-        let _ = redis::cmd("HDEL").arg(&[tx_key]).query(conn.deref_mut())?;
-        Ok(())
-    } else {
-        Err(Box::new(Error::new(
-            ErrorKind::Other,
-            format!(
-                "line:{}: Redis returned invalid status: {}",
-                line!(),
-                result.1
-            ),
-        )))
-    }
+    // if result.1 == "OK" {
+    let _ = redis::cmd("DEL").arg(tx_key).query(conn.deref_mut())?;
+    Ok(())
+    // } else {
+    //     Err(Box::new(Error::new(
+    //         ErrorKind::Other,
+    //         format!(
+    //             "line:{}: Redis returned invalid status: {}",
+    //             line!(),
+    //             result.1
+    //         ),
+    //     )))
+    // }
 }

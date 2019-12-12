@@ -7,9 +7,6 @@ lazy_static! {
         {
             "type": "object",
             "properties": {
-                "id": {
-                    "type": "integer"
-                },
                 "goods": {
                     "type": "array",
                     "uniqueItems": true,
@@ -30,7 +27,7 @@ lazy_static! {
                     }
                 }
             },
-            "required": ["id", "goods"],
+            "required": ["goods"],
             "additionalProperties": false
         }"#,
     )
