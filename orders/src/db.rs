@@ -77,6 +77,21 @@ impl UpdateOrder {
         let order_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
         let tx_key = &format!("tx:{}", order_key);
 
+        let status: String = redis::cmd("HGET")
+            .arg(&[order_key, "status"])
+            .query(conn.deref_mut())?;
+
+        if status == "payed" {
+            return Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "line:{}: Order '{}' can't be updated, cause it was already payed",
+                    line!(),
+                    order_id
+                ),
+            )));
+        }
+
         let status: String = redis::cmd("EVAL")
             .arg(&[EXEC_TX, "2", order_key, tx_key])
             .query(conn.deref_mut())?;
@@ -124,6 +139,8 @@ impl UpdateOrder {
     }
 }
 
+// TODO: if order is payed and was deleted, then billing must be rollout
+// right now there is no logic with billing, so no rollout
 pub fn delete_order(
     user_id: &str,
     order_id: &str,
