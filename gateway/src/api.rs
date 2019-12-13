@@ -294,9 +294,10 @@ pub fn get_goods(
     client_request(
         &client,
         &format!(
-            "http://{}{}",
+            "http://{}{}?{}",
             services_params.warehouse_service_addr,
-            req.path()
+            req.path(),
+            req.query_string()
         ),
     )
 }
