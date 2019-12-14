@@ -102,12 +102,23 @@ pub fn get_goods(
                         let key = std::str::from_utf8(data).unwrap();
 
                         if let redis::Value::Data(data) = &bulk[j + 1] {
-                            let value: u64 = std::str::from_utf8(data).unwrap().parse().unwrap();
+                            let value = std::str::from_utf8(data).unwrap();
+                            let is_num = value.parse::<u64>().is_ok();
 
-                            good.insert(
-                                key.to_string(),
-                                Value::Number(serde_json::Number::from(value)),
-                            );
+                            if is_num {
+                                let value: u64 =
+                                    std::str::from_utf8(data).unwrap().parse().unwrap();
+
+                                good.insert(
+                                    key.to_string(),
+                                    Value::Number(serde_json::Number::from(value)),
+                                );
+                            } else {
+                                good.insert(
+                                    key.to_string(),
+                                    serde_json::Value::String(value.to_string()),
+                                );
+                            }
                         }
                     }
 
@@ -162,13 +173,24 @@ pub fn get_good(
                             let key = std::str::from_utf8(data).unwrap();
 
                             if let redis::Value::Data(data) = &bulk[i + 1] {
-                                let value: u64 =
-                                    std::str::from_utf8(data).unwrap().parse().unwrap();
+                                let value = std::str::from_utf8(data).unwrap();
+                                let is_num = value.parse::<u64>().is_ok();
 
-                                good.insert(
-                                    key.to_string(),
-                                    Value::Number(serde_json::Number::from(value)),
-                                );
+                                if is_num {
+                                    let value: u64 =
+                                        std::str::from_utf8(data).unwrap().parse().unwrap();
+
+                                    good.insert(
+                                        key.to_string(),
+                                        Value::Number(serde_json::Number::from(value)),
+                                    );
+                                } else {
+                                    good.insert(
+                                        key.to_string(),
+                                        serde_json::Value::String(value.to_string()),
+                                    );
+                                    println!("key: {}, value: {}", key, value);
+                                }
                             }
                         }
 

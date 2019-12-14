@@ -5,6 +5,22 @@ use crypto::sha2::Sha256;
 use futures::*;
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Good {
+    #[serde(alias = "good_id")]
+    id: u64,
+    count: u64,
+    #[serde(default)]
+    naming: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Order {
+    status: String,
+    goods: Vec<Good>,
+}
 
 fn client_request(client: &Client, path: &str) -> impl Future<Item = HttpResponse, Error = Error> {
     client
@@ -18,7 +34,6 @@ fn client_request(client: &Client, path: &str) -> impl Future<Item = HttpRespons
                 .from_err()
                 .and_then(move |body| match std::str::from_utf8(&body) {
                     Ok(s) => {
-                        println!("{:?}", response.status());
                         if response.status() != actix_web::http::StatusCode::OK {
                             HttpResponse::NotFound().finish()
                         } else {
@@ -104,19 +119,55 @@ pub fn create_order(
     }
 }
 
-pub fn get_order(
-    req: HttpRequest,
-    client: web::Data<Client>,
-    services_params: web::Data<ServicesParams>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    client_request(
-        &client,
-        &format!(
-            "http://{}{}",
-            services_params.orders_service_addr,
-            req.path()
-        ),
-    )
+pub fn get_order(req: HttpRequest, services_params: web::Data<ServicesParams>) -> HttpResponse {
+    let mut res = match reqwest::get(&format!(
+        "http://{}{}",
+        services_params.orders_service_addr,
+        req.path()
+    )) {
+        Ok(res) => res,
+        Err(e) => {
+            error!("Error: {}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    if res.status().is_success() {
+        let mut order: Order = match res.json() {
+            Ok(x) => x,
+            Err(e) => {
+                error!("Error: {}", e);
+                return HttpResponse::InternalServerError().finish();
+            }
+        };
+
+        for good in &mut order.goods {
+            match reqwest::get(&format!(
+                "http://{}/goods/{}",
+                services_params.warehouse_service_addr, good.id
+            )) {
+                Ok(mut res) => {
+                    let g: Good = match res.json() {
+                        Ok(g) => g,
+                        Err(e) => {
+                            error!("Error: {}", e);
+                            return HttpResponse::InternalServerError().finish();
+                        }
+                    };
+
+                    good.naming = g.naming;
+                }
+                Err(e) => {
+                    error!("Error: {}", e);
+                    return HttpResponse::InternalServerError().finish();
+                }
+            }
+        }
+
+        HttpResponse::Ok().json(order)
+    } else {
+        HttpResponse::build(res.status()).finish()
+    }
 }
 
 pub fn update_order(
