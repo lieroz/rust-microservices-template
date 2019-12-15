@@ -87,37 +87,37 @@ function create_billing {
 
 function test_create_get_delete_order {
     create_order
-    get_order '{"goods":[{"count":1,"good_id":1}],"status":"new"}'
+    get_order '{"status":"new","goods":[{"id":1,"count":1,"naming":""}]}'
     delete_order
 }
 
 function test_create_update_get_delete_order {
     create_order
     update_order_op_update
-    get_order '{"goods":[{"count":3,"good_id":1}],"status":"new"}'
+    get_order '{"status":"new","goods":[{"id":1,"count":3,"naming":""}]}'
     delete_order
 
     create_order
     update_order_op_delete
-    get_order '{"goods":[],"status":"new"}'
+    get_order '{"status":"new","goods":[]}'
     delete_order
 }
 
 function test_billing {
     create_order
-    get_order '{"goods":[{"count":1,"good_id":1}],"status":"new"}'
+    get_order '{"status":"new","goods":[{"id":1,"count":1,"naming":""}]}'
     create_billing
-    get_order '{"goods":[{"count":1,"good_id":1}],"status":"payed"}'
+    get_order '{"status":"payed","goods":[{"id":1,"count":1,"naming":""}]}'
     delete_order
 }
 
 function test_update_after_billing {
     create_order
-    get_order '{"goods":[{"count":1,"good_id":1}],"status":"new"}'
+    get_order '{"status":"new","goods":[{"id":1,"count":1,"naming":""}]}'
     create_billing
-    get_order '{"goods":[{"count":1,"good_id":1}],"status":"payed"}'
+    get_order '{"status":"payed","goods":[{"id":1,"count":1,"naming":""}]}'
     update_order_op_update
-    get_order '{"goods":[{"count":1,"good_id":1}],"status":"payed"}'
+    get_order '{"status":"payed","goods":[{"id":1,"count":1,"naming":""}]}'
     delete_order
 }
 
