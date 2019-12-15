@@ -51,16 +51,28 @@ lazy_static! {
                                 "type": "integer"
                             },
                             "count": {
-                                "type": "integer",
-                                "minimum": 1
+                                "type": "integer"
                             },
                             "operation": {
                                 "type": "string",
                                 "enum": ["update", "delete"]
                             }
                         },
-                        "required": ["id", "count", "operation"],
-                        "additionalProperties": false
+                        "additionalProperties": false,
+                        "anyOf": [
+                            {
+                                "properties": {
+                                    "operation": { "const": "delete" }
+                                },
+                                "required": ["id", "operation"]
+                            },
+                            {
+                                "properties": {
+                                    "operation": { "const": "update" }
+                                },
+                                "required": ["id", "count", "operation"]
+                            }
+                        ]
                     }
                 }
             },

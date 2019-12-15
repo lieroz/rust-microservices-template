@@ -59,8 +59,21 @@ lazy_static! {
                                 "enum": ["update", "delete"]
                             }
                         },
-                        "required": ["id", "count", "operation"],
-                        "additionalProperties": false
+                        "additionalProperties": false,
+                        "anyOf": [
+                            {
+                                "properties": {
+                                    "operation": { "const": "delete" }
+                                },
+                                "required": ["id", "operation"]
+                            },
+                            {
+                                "properties": {
+                                    "operation": { "const": "update" }
+                                },
+                                "required": ["id", "count", "operation"]
+                            }
+                        ]
                     }
                 }
             },

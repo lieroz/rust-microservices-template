@@ -76,12 +76,13 @@ fn process_operation(
         // TODO: this can be called via hashmap and command pattern
         None => match &op[..] {
             "delete" => {
-                let _ = delete_order(
+                let result = delete_order(
                     metadata["user_id"],
                     metadata["order_id"],
                     &mut pool.get().unwrap(),
                 )?;
-                Ok((None, "delete"))
+                let value = serde_json::to_value(result)?;
+                Ok((Some((None, value)), "delete"))
             }
             "commit" => {
                 let _ = commit_tx(
@@ -117,13 +118,14 @@ fn process_operation(
                             Ok((Some((Some(order_id), value)), "create"))
                         }
                         "update" => {
-                            let order: UpdateOrder =
+                            let mut order: UpdateOrder =
                                 serde_json::value::from_value(value.clone()).unwrap();
                             let _ = order.update(
                                 metadata["user_id"],
                                 metadata["order_id"],
                                 &mut pool.get().unwrap(),
                             )?;
+                            let value = serde_json::to_value(order)?;
                             Ok((Some((None, value)), "update"))
                         }
                         _ => Err(Box::new(Error::new(

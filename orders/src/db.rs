@@ -1,5 +1,6 @@
 use r2d2_redis::{r2d2, redis, RedisConnectionManager};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::DerefMut;
 
@@ -42,14 +43,15 @@ impl CreateOrder {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct UpdateGood {
     id: u64,
-    count: u64,
+    #[serde(default)]
+    count: i64,
     operation: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct UpdateOrder {
     goods: Vec<UpdateGood>,
 }
@@ -69,7 +71,7 @@ const EXEC_TX: &str = r#"
 // TODO: order can be empty after update, consider fixing it
 impl UpdateOrder {
     pub fn update(
-        &self,
+        &mut self,
         user_id: &str,
         order_id: &str,
         conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
@@ -99,8 +101,22 @@ impl UpdateOrder {
         if status == "OK" {
             let mut pipe = redis::pipe();
 
-            for good in &self.goods {
+            for good in &mut self.goods {
                 let good_id = &format!("good_id:{}", good.id);
+                let redis_count = redis::cmd("HGET")
+                    .arg(&[order_key, good_id])
+                    .query(conn.deref_mut())?;
+
+                let redis_count = match redis_count {
+                    redis::Value::Nil => 0,
+                    redis::Value::Data(data) => std::str::from_utf8(&data)?.parse::<i64>()?,
+                    value => {
+                        return Err(Box::new(Error::new(
+                            ErrorKind::Other,
+                            format!("Invalid value: {:?}", value),
+                        )))
+                    }
+                };
 
                 match &good.operation[..] {
                     "update" => {
@@ -121,8 +137,10 @@ impl UpdateOrder {
                     }
                 }
 
-                let _ = pipe.query(conn.deref_mut())?;
+                good.count = redis_count - good.count;
             }
+
+            let _ = pipe.query(conn.deref_mut())?;
         } else {
             let _ = redis::cmd("DEL").arg(tx_key).query(conn.deref_mut())?;
             return Err(Box::new(Error::new(
@@ -145,7 +163,7 @@ pub fn delete_order(
     user_id: &str,
     order_id: &str,
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>> {
     let order_key = &format!("user_id:{}:order_id:{}", user_id, order_id);
     let tx_key = &format!("tx:{}", order_key);
 
@@ -154,7 +172,31 @@ pub fn delete_order(
         .query(conn.deref_mut())?;
 
     if status == "OK" {
-        Ok(())
+        let order: Vec<redis::Value> = redis::cmd("HGETALL")
+            .arg(&[tx_key])
+            .query(conn.deref_mut())?;
+
+        let mut map = HashMap::new();
+        let mut i = 0;
+
+        while i < order.len() {
+            if let redis::Value::Data(data) = &order[i] {
+                let key = std::str::from_utf8(&data)?;
+
+                if key.contains("good_id") {
+                    if let redis::Value::Data(data) = &order[i + 1] {
+                        let value = std::str::from_utf8(&data)?;
+
+                        map.insert(key.to_string(), value.parse::<u64>()?);
+                        i += 2;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+        }
+
+        Ok(map)
     } else {
         Err(Box::new(Error::new(
             ErrorKind::Other,

@@ -68,19 +68,16 @@ fn get_kafka_message_metadata<'a>(
 fn process_operation(
     validators: &HashMap<&str, schema::ScopedSchema>,
     op: &str,
-    metadata: &HashMap<&str, &str>,
     payload: &str,
     pool: &r2d2::Pool<RedisConnectionManager>,
 ) -> Result<Option<serde_json::Value>, Box<dyn std::error::Error>> {
+    println!("op: {}", op);
     match validators.get(op) {
         // TODO: this can be called via hashmap and command pattern
         None => match &op[..] {
             "delete" => {
-                let _ = delete_order(
-                    metadata["user_id"],
-                    metadata["order_id"],
-                    &mut pool.get().unwrap(),
-                )?;
+                let value: HashMap<String, u64> = serde_json::from_str(payload)?;
+                let _ = delete_order(value, &mut pool.get().unwrap())?;
                 Ok(None)
             }
             _ => Err(Box::new(Error::new(
@@ -94,21 +91,13 @@ fn process_operation(
                     match &op[..] {
                         "create" => {
                             let order: CreateOrder = serde_json::value::from_value(value.clone())?;
-                            order.create(
-                                metadata["user_id"],
-                                metadata["order_id"],
-                                &mut pool.get().unwrap(),
-                            )?;
+                            order.create(&mut pool.get().unwrap())?;
                             Ok(Some(value))
                         }
                         "update" => {
                             let order: UpdateOrder =
                                 serde_json::value::from_value(value.clone()).unwrap();
-                            let _ = order.update(
-                                metadata["user_id"],
-                                metadata["order_id"],
-                                &mut pool.get().unwrap(),
-                            )?;
+                            let _ = order.update(&mut pool.get().unwrap())?;
                             Ok(Some(value))
                         }
                         _ => Err(Box::new(Error::new(
@@ -178,13 +167,7 @@ pub fn consume_and_process(
                                         .add("order_id", metadata["order_id"])
                                         .add("transaction", *op);
 
-                                    match process_operation(
-                                        &validators,
-                                        op,
-                                        &metadata,
-                                        payload,
-                                        &pool,
-                                    ) {
+                                    match process_operation(&validators, op, payload, &pool) {
                                         Ok(_) => {
                                             headers = headers.add("operation", "commit");
                                         }
