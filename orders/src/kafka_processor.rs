@@ -1,4 +1,4 @@
-use crate::db::{commit_tx, delete_order, rollout_tx, CreateOrder, UpdateOrder};
+use crate::db::{commit_tx, delete_order, make_billing, rollout_tx, CreateOrder, UpdateOrder};
 use crate::validation_schema::{VALIDATION_SCHEMA_CREATE, VALIDATION_SCHEMA_UPDATE};
 use crate::KafkaTopics;
 use futures::stream::Stream;
@@ -83,6 +83,14 @@ fn process_operation(
                 )?;
                 let value = serde_json::to_value(result)?;
                 Ok((Some((None, value)), "delete"))
+            }
+            "make_billing" => {
+                let _ = make_billing(
+                    metadata["user_id"],
+                    metadata["order_id"],
+                    &mut pool.get().unwrap(),
+                )?;
+                Ok((None, "delete"))
             }
             "commit" => {
                 let _ = commit_tx(
@@ -198,7 +206,10 @@ pub fn consume_and_process(
                                         &pool,
                                     ) {
                                         Ok((result, op)) => {
-                                            if op != "commit" && op != "rollout" {
+                                            if op != "commit"
+                                                && op != "rollout"
+                                                && op != "make_billing"
+                                            {
                                                 let mut headers = OwnedHeaders::new()
                                                     .add("user_id", metadata["user_id"])
                                                     .add("operation", op);

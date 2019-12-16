@@ -4,7 +4,10 @@ port = 8082
 workers = 4
 kafka_workers = 2
 log_level = 'debug'
-redis_connection_string = 'redis://localhost'
+
+[kafka_producer]
+bootstrap_servers = 'localhost:9092'
+message_timeout_ms = '5000'
 
 [kafka_consumer]
 group_id = '3'
@@ -15,3 +18,4 @@ enable_auto_commit = 'false'
 
 [kafka_topics]
 billing_service_topic = 'billings'
+orders_service_topic = 'orders'

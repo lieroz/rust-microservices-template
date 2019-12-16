@@ -3,6 +3,7 @@
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+ORANGE='\033[0;33m'
 NC='\033[0m'
 
 FAILED="${RED}FAILED${NC}:"
@@ -87,41 +88,68 @@ function create_billing {
 
 function test_create_get_delete_order {
     create_order
+    sleep 0.1
     get_order '{"status":"new","goods":[{"id":1,"count":1,"naming":""}]}'
+    sleep 0.1
     delete_order
+    sleep 0.1
 }
 
 function test_create_update_get_delete_order {
     create_order
+    sleep 0.1
     update_order_op_update
+    sleep 0.1
     get_order '{"status":"new","goods":[{"id":1,"count":3,"naming":""}]}'
+    sleep 0.1
     delete_order
+    sleep 0.1
 
     create_order
+    sleep 0.1
     update_order_op_delete
+    sleep 0.1
     get_order '{"status":"new","goods":[]}'
+    sleep 0.1
     delete_order
+    sleep 0.1
 }
 
 function test_billing {
     create_order
+    sleep 0.1
     get_order '{"status":"new","goods":[{"id":1,"count":1,"naming":""}]}'
+    sleep 0.1
     create_billing
+    sleep 0.1
     get_order '{"status":"payed","goods":[{"id":1,"count":1,"naming":""}]}'
+    sleep 0.1
     delete_order
+    sleep 0.1
 }
 
 function test_update_after_billing {
     create_order
+    sleep 0.1
     get_order '{"status":"new","goods":[{"id":1,"count":1,"naming":""}]}'
+    sleep 0.1
     create_billing
+    sleep 0.1
     get_order '{"status":"payed","goods":[{"id":1,"count":1,"naming":""}]}'
+    sleep 0.1
     update_order_op_update
+    sleep 0.1
     get_order '{"status":"payed","goods":[{"id":1,"count":1,"naming":""}]}'
+    sleep 0.1
     delete_order
+    sleep 0.1
 }
 
+echo -e "${ORANGE}TEST: test_create_get_delete_order$NC"
 test_create_get_delete_order
+echo -e "${ORANGE}TEST: test_create_update_get_delete_order$NC"
 test_create_update_get_delete_order
+echo -e "${ORANGE}TEST: test_billing$NC"
 test_billing
+echo -e "${ORANGE}TEST: test_update_after_billing$NC"
 test_update_after_billing

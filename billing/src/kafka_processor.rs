@@ -1,16 +1,13 @@
-use crate::db::CreateBilling;
-use crate::validation_schema::VALIDATION_SCHEMA_CREATE;
 use crate::KafkaTopics;
 use futures::stream::Stream;
-use r2d2_redis::{r2d2, RedisConnectionManager};
 use rdkafka::client::ClientContext;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance};
 use rdkafka::error::KafkaResult;
-use rdkafka::message::{BorrowedHeaders, Headers, Message};
+use rdkafka::message::{BorrowedHeaders, Headers, Message, OwnedHeaders};
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::collections::HashMap;
 use std::sync::Arc;
-use valico::json_schema::{schema, Scope};
 
 pub struct BillingContext;
 
@@ -63,40 +60,14 @@ fn get_kafka_message_metadata<'a>(
     Ok(metadata)
 }
 
-fn process_payload(
-    validator: &schema::ScopedSchema,
-    metadata: &HashMap<&str, &str>,
-    payload: &str,
-    pool: &r2d2::Pool<RedisConnectionManager>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match serde_json::from_str(payload) {
-        Ok(value) => {
-            if validator.validate(&value).is_valid() {
-                let billing: CreateBilling = serde_json::value::from_value(value)?;
-                billing.create(metadata["user_id"], metadata["order_id"], &mut pool.get()?)
-            } else {
-                error!("Error: invalid JSON schema: {}", value);
-                Ok(())
-            }
-        }
-        Err(e) => Err(Box::new(e)),
-    }
-}
-
 pub fn consume_and_process(
     topics: KafkaTopics,
+    producer: FutureProducer,
     consumer: Arc<StreamConsumer<BillingContext>>,
-    pool: r2d2::Pool<RedisConnectionManager>,
 ) {
     consumer
         .subscribe(&[&topics.billing_service_topic])
         .expect("Can't subscribe to specified topics");
-
-    let mut scope = Scope::new();
-    let validator = scope
-        .compile_and_return(VALIDATION_SCHEMA_CREATE.clone(), true)
-        .ok()
-        .unwrap();
 
     for message in consumer.start().wait() {
         match message {
@@ -119,10 +90,18 @@ pub fn consume_and_process(
 
                         match get_kafka_message_metadata(&msg.headers()) {
                             Ok(metadata) => {
-                                match process_payload(&validator, &metadata, payload, &pool) {
-                                    Ok(_) => (),
-                                    Err(e) => error!("{}:Error: {}", line!(), e),
-                                }
+                                let payload = "".to_string();
+                                let record: FutureRecord<String, String> =
+                                    FutureRecord::to(&topics.orders_service_topic)
+                                        .headers(
+                                            OwnedHeaders::new()
+                                                .add("user_id", metadata["user_id"])
+                                                .add("order_id", metadata["order_id"])
+                                                .add("operation", "make_billing"),
+                                        )
+                                        .payload(&payload);
+
+                                let _ = producer.send(record, 0);
                             }
                             Err(e) => error!("{}:Error: {}", line!(), e),
                         }
