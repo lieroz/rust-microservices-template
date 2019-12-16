@@ -108,9 +108,14 @@ pub fn consume_and_process(
                         error!("{}:Error: empty payload came from kafka", line!());
                     }
                     Some(Ok(payload)) => {
-                        debug!("key: '{:?}', payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
-                      std::str::from_utf8(msg.key().unwrap()).unwrap(),
-                      payload, msg.topic(), msg.partition(), msg.offset(), msg.timestamp());
+                        debug!(
+                            "payload: '{}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+                            payload,
+                            msg.topic(),
+                            msg.partition(),
+                            msg.offset(),
+                            msg.timestamp()
+                        );
 
                         match get_kafka_message_metadata(&msg.headers()) {
                             Ok(metadata) => {
