@@ -10,3 +10,4 @@ This is a simple project that can be used as a reference on how to organize micr
 - [ ] Signal handling (quick working example was used, need to be tested and understood)
 - [ ] Change Redis for PostgreSQL or equivalent (tried to make things simple, but turned out to be bad design and a lot of code that is not handled appropriately)
 - [ ] Move JSON validation schemas to text files (right now there are hardcoded)
+- [ ] Make billing entity separate and store it in database, then delete if order was deleted
