@@ -4,7 +4,7 @@ port = 8083
 workers = 4
 kafka_workers = 3
 log_level = 'debug'
-redis_connection_string = 'redis://localhost'
+redis_connection_string = 'redis://localhost:6380'
 
 [kafka_producer]
 bootstrap_servers = 'localhost:9092'

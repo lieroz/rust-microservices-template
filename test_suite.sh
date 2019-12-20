@@ -10,7 +10,7 @@ FAILED="${RED}FAILED${NC}:"
 PASSED="${GREEN}PASSED${NC}:"
 
 function create_order {
-    redis-cli HSET good_id:1 count 5
+    redis-cli -p 6380 HSET good_id:1 count 5
 
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         'localhost:8080/user/1/order' -d '{"goods": [{"id": 1, "count": 1}]}')
@@ -72,7 +72,8 @@ function delete_order {
         echo -e "$PASSED /user/1/order/1 DELETE"
     fi
 
-    redis-cli flushdb
+    redis-cli -p 6379 flushdb
+    redis-cli -p 6380 flushdb
 }
 
 function create_billing {
