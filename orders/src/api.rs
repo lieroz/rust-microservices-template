@@ -73,7 +73,7 @@ fn parse_redis_answer(bulk: Vec<redis::Value>) -> Option<Map<String, Value>> {
 
 pub fn get_orders(
     req: HttpRequest,
-    user_id: web::Path<(String)>,
+    user_id: web::Path<String>,
     db: web::Data<r2d2::Pool<RedisConnectionManager>>,
 ) -> HttpResponse {
     let query = qstring::QString::from(req.query_string());

@@ -1,5 +1,5 @@
 use crate::{KafkaTopics, ServicesParams};
-use actix_web::{client::Client, web, Error, HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use futures::*;
@@ -22,52 +22,47 @@ struct Order {
     goods: Vec<Good>,
 }
 
-fn client_request(client: &Client, path: &str) -> impl Future<Item = HttpResponse, Error = Error> {
-    client
-        .get(path)
-        .header("User-Agent", "Actix-web-gateway")
-        .send()
-        .from_err()
-        .and_then(|mut response| {
-            response
-                .body()
-                .from_err()
-                .and_then(move |body| match std::str::from_utf8(&body) {
-                    Ok(s) => {
-                        if response.status() != actix_web::http::StatusCode::OK {
-                            HttpResponse::NotFound().finish()
-                        } else {
-                            HttpResponse::Ok()
-                                .content_type("application/json")
-                                .body(format!("{}", s))
-                        }
-                    }
-                    Err(e) => {
-                        error!("{}:Couldn't deserialize payload: {}", line!(), e);
-                        HttpResponse::InternalServerError().finish()
-                    }
-                })
-        })
+fn liveness_probe(host: &str, path: &str, f: &dyn Fn(&str, &str) -> HttpResponse) -> HttpResponse {
+    match reqwest::get(&format!("http://{}/probe/liveness", host)) {
+        Ok(res) => {
+            if res.status().is_success() {
+                f(host, path)
+            } else {
+                HttpResponse::build(res.status()).finish()
+            }
+        }
+        Err(e) => {
+            error!("Error: {}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }
 
-pub fn get_orders(
-    req: HttpRequest,
-    client: web::Data<Client>,
-    services_params: web::Data<ServicesParams>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    client_request(
-        &client,
-        &format!(
-            "http://{}{}",
-            services_params.orders_service_addr,
-            req.path()
-        ),
+pub fn get_orders(req: HttpRequest, services_params: web::Data<ServicesParams>) -> HttpResponse {
+    liveness_probe(
+        &services_params.orders_service_addr,
+        &req.path(),
+        &|host, path| match reqwest::get(&format!("http://{}{}", host, path)) {
+            Ok(mut res) => match res.text() {
+                Ok(text) => HttpResponse::build(res.status())
+                    .content_type("application/json")
+                    .body(text),
+                Err(e) => {
+                    error!("Error: {}", e);
+                    HttpResponse::InternalServerError().finish()
+                }
+            },
+            Err(e) => {
+                error!("Error: {}", e);
+                HttpResponse::InternalServerError().finish()
+            }
+        },
     )
 }
 
 pub fn create_order(
     bytes: web::Bytes,
-    user_id: web::Path<(String)>,
+    user_id: web::Path<String>,
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
 ) -> HttpResponse {
@@ -120,54 +115,56 @@ pub fn create_order(
 }
 
 pub fn get_order(req: HttpRequest, services_params: web::Data<ServicesParams>) -> HttpResponse {
-    let mut res = match reqwest::get(&format!(
-        "http://{}{}",
-        services_params.orders_service_addr,
-        req.path()
-    )) {
-        Ok(res) => res,
-        Err(e) => {
-            error!("Error: {}", e);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-
-    if res.status().is_success() {
-        let mut order: Order = match res.json() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("Error: {}", e);
-                return HttpResponse::InternalServerError().finish();
-            }
-        };
-
-        for good in &mut order.goods {
-            match reqwest::get(&format!(
-                "http://{}/goods/{}",
-                services_params.warehouse_service_addr, good.id
-            )) {
-                Ok(mut res) => {
-                    let g: Good = match res.json() {
-                        Ok(g) => g,
-                        Err(e) => {
-                            error!("Error: {}", e);
-                            return HttpResponse::InternalServerError().finish();
-                        }
-                    };
-
-                    good.naming = g.naming;
-                }
+    liveness_probe(
+        &services_params.orders_service_addr,
+        &req.path(),
+        &|host, path| {
+            let mut res = match reqwest::get(&format!("http://{}{}", host, path)) {
+                Ok(res) => res,
                 Err(e) => {
                     error!("Error: {}", e);
                     return HttpResponse::InternalServerError().finish();
                 }
-            }
-        }
+            };
 
-        HttpResponse::Ok().json(order)
-    } else {
-        HttpResponse::build(res.status()).finish()
-    }
+            if res.status().is_success() {
+                let mut order: Order = match res.json() {
+                    Ok(x) => x,
+                    Err(e) => {
+                        error!("Error: {}", e);
+                        return HttpResponse::InternalServerError().finish();
+                    }
+                };
+
+                for good in &mut order.goods {
+                    match reqwest::get(&format!(
+                        "http://{}/goods/{}",
+                        &services_params.warehouse_service_addr, good.id
+                    )) {
+                        Ok(mut res) => {
+                            let g: Good = match res.json() {
+                                Ok(g) => g,
+                                Err(e) => {
+                                    error!("Error: {}", e);
+                                    return HttpResponse::InternalServerError().finish();
+                                }
+                            };
+
+                            good.naming = g.naming;
+                        }
+                        Err(e) => {
+                            error!("Error: {}", e);
+                            return HttpResponse::InternalServerError().finish();
+                        }
+                    }
+                }
+
+                HttpResponse::Ok().json(order)
+            } else {
+                HttpResponse::build(res.status()).finish()
+            }
+        },
+    )
 }
 
 pub fn update_order(
@@ -337,33 +334,46 @@ pub fn make_billing(
     }
 }
 
-pub fn get_goods(
-    req: HttpRequest,
-    client: web::Data<Client>,
-    services_params: web::Data<ServicesParams>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    client_request(
-        &client,
-        &format!(
-            "http://{}{}?{}",
-            services_params.warehouse_service_addr,
-            req.path(),
-            req.query_string()
-        ),
+pub fn get_goods(req: HttpRequest, services_params: web::Data<ServicesParams>) -> HttpResponse {
+    liveness_probe(
+        &services_params.warehouse_service_addr,
+        &req.path(),
+        &|host, path| match reqwest::get(&format!("http://{}{}", host, path)) {
+            Ok(mut res) => match res.text() {
+                Ok(text) => HttpResponse::build(res.status())
+                    .content_type("application/json")
+                    .body(text),
+                Err(e) => {
+                    error!("Error: {}", e);
+                    HttpResponse::InternalServerError().finish()
+                }
+            },
+            Err(e) => {
+                error!("Error: {}", e);
+                HttpResponse::InternalServerError().finish()
+            }
+        },
     )
 }
 
-pub fn get_good(
-    req: HttpRequest,
-    client: web::Data<Client>,
-    services_params: web::Data<ServicesParams>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    client_request(
-        &client,
-        &format!(
-            "http://{}{}",
-            services_params.warehouse_service_addr,
-            req.path()
-        ),
+pub fn get_good(req: HttpRequest, services_params: web::Data<ServicesParams>) -> HttpResponse {
+    liveness_probe(
+        &services_params.warehouse_service_addr,
+        &req.path(),
+        &|host, path| match reqwest::get(&format!("http://{}{}", host, path)) {
+            Ok(mut res) => match res.text() {
+                Ok(text) => HttpResponse::build(res.status())
+                    .content_type("application/json")
+                    .body(text),
+                Err(e) => {
+                    error!("Error: {}", e);
+                    HttpResponse::InternalServerError().finish()
+                }
+            },
+            Err(e) => {
+                error!("Error: {}", e);
+                HttpResponse::InternalServerError().finish()
+            }
+        },
     )
 }
