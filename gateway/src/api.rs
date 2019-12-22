@@ -1,4 +1,5 @@
 use crate::{KafkaTopics, ServicesParams};
+use actix_web::http::StatusCode;
 use actix_web::{web, HttpRequest, HttpResponse};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
@@ -34,6 +35,26 @@ fn liveness_probe(host: &str, path: &str, f: &dyn Fn(&str, &str) -> HttpResponse
         Err(e) => {
             error!("Error: {}", e);
             HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+fn liveness_probe_v2(
+    host: &str,
+    path: &str,
+    f: &mut dyn FnMut(&str, &str) -> StatusCode,
+) -> StatusCode {
+    match reqwest::get(&format!("http://{}/probe/liveness", host)) {
+        Ok(res) => {
+            if res.status().is_success() {
+                f(host, path)
+            } else {
+                res.status()
+            }
+        }
+        Err(e) => {
+            error!("Error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
         }
     }
 }
@@ -137,26 +158,31 @@ pub fn get_order(req: HttpRequest, services_params: web::Data<ServicesParams>) -
                 };
 
                 for good in &mut order.goods {
-                    match reqwest::get(&format!(
-                        "http://{}/goods/{}",
-                        &services_params.warehouse_service_addr, good.id
-                    )) {
-                        Ok(mut res) => {
-                            let g: Good = match res.json() {
-                                Ok(g) => g,
-                                Err(e) => {
-                                    error!("Error: {}", e);
-                                    return HttpResponse::InternalServerError().finish();
-                                }
-                            };
+                    liveness_probe_v2(
+                        &services_params.warehouse_service_addr,
+                        &good.id.to_string(),
+                        &mut |host, path| match reqwest::get(&format!(
+                            "http://{}/goods/{}",
+                            host, path
+                        )) {
+                            Ok(mut res) => {
+                                let g: Good = match res.json() {
+                                    Ok(g) => g,
+                                    Err(e) => {
+                                        error!("Error: {}", e);
+                                        return StatusCode::INTERNAL_SERVER_ERROR;
+                                    }
+                                };
 
-                            good.naming = g.naming;
-                        }
-                        Err(e) => {
-                            error!("Error: {}", e);
-                            return HttpResponse::InternalServerError().finish();
-                        }
-                    }
+                                good.naming = g.naming;
+                                StatusCode::OK
+                            }
+                            Err(e) => {
+                                error!("Error: {}", e);
+                                StatusCode::INTERNAL_SERVER_ERROR
+                            }
+                        },
+                    );
                 }
 
                 HttpResponse::Ok().json(order)
