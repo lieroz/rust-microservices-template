@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "gateway",
+    "billing",
+    "orders",
+    "warehouse",
+]
