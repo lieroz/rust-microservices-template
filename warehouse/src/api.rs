@@ -140,7 +140,7 @@ pub fn get_goods(
 }
 
 pub fn get_good(
-    good_id: web::Path<(String)>,
+    good_id: web::Path<String>,
     db: web::Data<r2d2::Pool<RedisConnectionManager>>,
 ) -> HttpResponse {
     let mut conn = match db.get() {
