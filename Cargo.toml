@@ -5,4 +5,5 @@ members = [
     "billing",
     "orders",
     "warehouse",
+    "auth-server",
 ]
