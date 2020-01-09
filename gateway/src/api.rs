@@ -4,9 +4,11 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use futures::*;
+use r2d2_redis::{r2d2, redis, RedisConnectionManager};
 use rdkafka::message::OwnedHeaders;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::{Deserialize, Serialize};
+use std::ops::DerefMut;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Good {
@@ -59,7 +61,52 @@ fn liveness_probe_v2(
     }
 }
 
-pub fn get_orders(req: HttpRequest, services_params: web::Data<ServicesParams>) -> HttpResponse {
+fn check_auth_token(
+    req: &HttpRequest,
+    user_id: &str,
+    conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
+) -> bool {
+    match req.headers().get("Authorization") {
+        Some(x) => match x.to_str() {
+            Ok(x) => match redis::cmd("GET").arg(user_id).query(conn.deref_mut()) {
+                Ok(value) => match value {
+                    redis::Value::Data(data) => {
+                        let token = String::from_utf8(data.to_vec()).unwrap();
+                        if token == x {
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                },
+                Err(e) => {
+                    error!("{}", e);
+                    false
+                }
+            },
+            Err(e) => {
+                error!("{}", e);
+                false
+            }
+        },
+        None => {
+            error!("No 'Authorization' header in request");
+            false
+        }
+    }
+}
+
+pub fn get_orders(
+    req: HttpRequest,
+    user_id: web::Path<String>,
+    services_params: web::Data<ServicesParams>,
+    pool: web::Data<r2d2::Pool<RedisConnectionManager>>,
+) -> HttpResponse {
+    if !check_auth_token(&req, &user_id, &mut pool.get().unwrap()) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
     liveness_probe(
         &services_params.orders_service_addr,
         &req.path(),
@@ -82,11 +129,17 @@ pub fn get_orders(req: HttpRequest, services_params: web::Data<ServicesParams>) 
 }
 
 pub fn create_order(
+    req: HttpRequest,
     bytes: web::Bytes,
     user_id: web::Path<String>,
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
+    pool: web::Data<r2d2::Pool<RedisConnectionManager>>,
 ) -> HttpResponse {
+    if !check_auth_token(&req, &user_id, &mut pool.get().unwrap()) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
     let mut hasher = Sha256::new();
     hasher.input(user_id.as_bytes());
     hasher.input(bytes.as_ref());
@@ -135,7 +188,16 @@ pub fn create_order(
     }
 }
 
-pub fn get_order(req: HttpRequest, services_params: web::Data<ServicesParams>) -> HttpResponse {
+pub fn get_order(
+    req: HttpRequest,
+    params: web::Path<(String,)>,
+    services_params: web::Data<ServicesParams>,
+    pool: web::Data<r2d2::Pool<RedisConnectionManager>>,
+) -> HttpResponse {
+    if !check_auth_token(&req, &params.0, &mut pool.get().unwrap()) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
     liveness_probe(
         &services_params.orders_service_addr,
         &req.path(),
@@ -194,11 +256,17 @@ pub fn get_order(req: HttpRequest, services_params: web::Data<ServicesParams>) -
 }
 
 pub fn update_order(
+    req: HttpRequest,
     bytes: web::Bytes,
     params: web::Path<(String, String)>,
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
+    pool: web::Data<r2d2::Pool<RedisConnectionManager>>,
 ) -> HttpResponse {
+    if !check_auth_token(&req, &params.0, &mut pool.get().unwrap()) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
     let mut hasher = Sha256::new();
     hasher.input(params.0.as_bytes());
     hasher.input(params.1.as_bytes());
@@ -250,11 +318,17 @@ pub fn update_order(
 }
 
 pub fn delete_order(
+    req: HttpRequest,
     bytes: web::Bytes,
     params: web::Path<(String, String)>,
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
+    pool: web::Data<r2d2::Pool<RedisConnectionManager>>,
 ) -> HttpResponse {
+    if !check_auth_token(&req, &params.0, &mut pool.get().unwrap()) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
     let mut hasher = Sha256::new();
     hasher.input(params.0.as_bytes());
     hasher.input(params.1.as_bytes());
@@ -306,11 +380,17 @@ pub fn delete_order(
 }
 
 pub fn make_billing(
+    req: HttpRequest,
     bytes: web::Bytes,
     params: web::Path<(String, String)>,
     producer: web::Data<FutureProducer>,
     kafka_topics: web::Data<KafkaTopics>,
+    pool: web::Data<r2d2::Pool<RedisConnectionManager>>,
 ) -> HttpResponse {
+    if !check_auth_token(&req, &params.0, &mut pool.get().unwrap()) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
     let mut hasher = Sha256::new();
     hasher.input(params.0.as_bytes());
     hasher.input(params.1.as_bytes());
