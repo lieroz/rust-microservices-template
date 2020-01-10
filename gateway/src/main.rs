@@ -2,6 +2,7 @@
 extern crate log;
 
 use actix_web::{middleware::Logger, App, HttpServer};
+use r2d2_redis::{r2d2, RedisConnectionManager};
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::FutureProducer;
 use serde::Deserialize;
@@ -14,6 +15,7 @@ struct ServerOptions {
     port: usize,
     workers: usize,
     log_level: String,
+    redis_connection_string: String,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +94,10 @@ fn main() {
             let kafka_topics = config.kafka_topics.clone();
             let services_params = config.services.clone();
 
+            let manager =
+                RedisConnectionManager::new(&config.server.redis_connection_string[..]).unwrap();
+            let pool = r2d2::Pool::builder().build(manager).unwrap();
+
             let mut listen_fd = listenfd::ListenFd::from_env();
             let mut server = HttpServer::new(move || {
                 App::new()
@@ -99,6 +105,7 @@ fn main() {
                     .data(producer.clone())
                     .data(kafka_topics.clone())
                     .data(services_params.clone())
+                    .data(pool.clone())
                     .wrap(Logger::new(
                         "ip: %a, date: %t, response code: %s, response size: %b (bytes), duration: %D (ms)",
                     ))
