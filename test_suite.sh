@@ -9,11 +9,15 @@ NC='\033[0m'
 FAILED="${RED}FAILED${NC}:"
 PASSED="${GREEN}PASSED${NC}:"
 
+
 function create_order {
     redis-cli -p 6380 HSET good_id:1 count 5
 
+    token=$(curl -s localhost:3000/auth -d '{"login": "1", "password": "qwerty"}' -H 'Content-Type: application/json')
+
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        'localhost:8080/user/1/order' -d '{"goods": [{"id": 1, "count": 1}]}')
+        'localhost:8080/user/1/order' -d '{"goods": [{"id": 1, "count": 1}]}' \
+        -H "Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 201 ]] ; then
         echo -e "$FAILED expected 201 was $status_code"
@@ -23,9 +27,12 @@ function create_order {
 }
 
 function update_order_op_update {
+    token=$(curl -s localhost:3000/auth -d '{"login": "1", "password": "qwerty"}' -H 'Content-Type: application/json')
+
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -X PUT 'localhost:8080/user/1/order/1' \
-        -d '{"goods": [{"id": 1, "count": 3, "operation": "update"}]}')
+        -d '{"goods": [{"id": 1, "count": 3, "operation": "update"}]}' \
+        -H "Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 200 ]] ; then
         echo -e "$FAILED expected 200 was $status_code"
@@ -35,9 +42,12 @@ function update_order_op_update {
 }
 
 function update_order_op_delete {
+    token=$(curl -s localhost:3000/auth -d '{"login": "1", "password": "qwerty"}' -H 'Content-Type: application/json')
+
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -X PUT 'localhost:8080/user/1/order/1' \
-        -d '{"goods": [{"id": 1, "count": 1, "operation": "delete"}]}')
+        -d '{"goods": [{"id": 1, "count": 1, "operation": "delete"}]}' \
+        -H "Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 200 ]] ; then
         echo -e "$FAILED expected 200 was $status_code"
@@ -47,7 +57,9 @@ function update_order_op_delete {
 }
 
 function get_order {
-    response=($(curl -s -w "\n%{http_code}" 'localhost:8080/user/1/order/1' | {             
+    token=$(curl -s localhost:3000/auth -d '{"login": "1", "password": "qwerty"}' -H 'Content-Type: application/json')
+
+    response=($(curl -s -w "\n%{http_code}" 'localhost:8080/user/1/order/1' -H "Authorization: $(echo $token | xargs)"| {
         read body
         read code
         echo $code
@@ -63,8 +75,11 @@ function get_order {
 }
 
 function delete_order {
+    token=$(curl -s localhost:3000/auth -d '{"login": "1", "password": "qwerty"}' -H 'Content-Type: application/json')
+
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X DELETE 'localhost:8080/user/1/order/1')
+        -X DELETE 'localhost:8080/user/1/order/1' \
+        -H "Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 200 ]] ; then
         echo -e "$FAILED expected 200 was $status_code"
@@ -77,8 +92,11 @@ function delete_order {
 }
 
 function create_billing {
+    token=$(curl -s localhost:3000/auth -d '{"login": "1", "password": "qwerty"}' -H 'Content-Type: application/json')
+
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        'localhost:8080/user/1/order/1/billing' -d '{"id": 1}')
+        'localhost:8080/user/1/order/1/billing' -d '{"id": 1}' \
+        -H "Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 201 ]] ; then
         echo -e "$FAILED expected 201 was $status_code"
