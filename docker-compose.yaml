@@ -1,0 +1,18 @@
+
+version: '3'
+services:
+  auth-server:
+    network_mode: host
+    build: auth-server
+  gateway:
+    network_mode: host
+    build: gateway
+  orders:
+    network_mode: host
+    build: orders
+  billing:
+    network_mode: host
+    build: billing
+  warehouse:
+    network_mode: host
+    build: warehouse
