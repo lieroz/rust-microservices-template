@@ -19,7 +19,7 @@ cache: cargo
 before_deploy:
   - echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin
   - docker pull "$BASE_IMAGE_NAME" || true
-  - docker build --pull --cache-from "$BASE_IMAGE_NAME" --tag "$BASE_IMAGE_NAME" .
+  - docker build --pull --cache-from "$BASE_IMAGE_NAME" --tag "$BASE_IMAGE_NAME" -f Dockerfile.build .
   - docker tag "$BASE_IMAGE_NAME" "${BASE_IMAGE_NAME}:latest"
   - docker pull "$AUTH_SERVER_IMAGE_NAME" || true
   - docker build --pull --cache-from "$AUTH_SERVER_IMAGE_NAME" --tag "$AUTH_SERVER_IMAGE_NAME" auth-server/
