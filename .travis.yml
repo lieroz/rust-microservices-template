@@ -2,8 +2,6 @@ language: rust
 rust:
   - stable
 
-sudo: required
-
 services:
   - docker
 
@@ -47,5 +45,6 @@ deploy:
     docker push "${ORDERS_IMAGE_NAME}:latest" && \
     docker push "${BILLING_IMAGE_NAME}:latest" && \
     docker push "${WAREHOUSE_IMAGE_NAME}:latest"
-  # on:
+  on:
+    all_branches: true
   #   branch: master
