@@ -16,6 +16,8 @@ env:
     - BILLING_IMAGE_NAME="${REGISTRY_USER}/billing"
     - WAREHOUSE_IMAGE_NAME="${REGISTRY_USER}/warehouse"
 
+cache: cargo
+
 before_deploy:
   - echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin
   - docker pull "$BASE_IMAGE_NAME" || true
