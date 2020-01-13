@@ -47,5 +47,5 @@ deploy:
     docker push "${ORDERS_IMAGE_NAME}:latest" && \
     docker push "${BILLING_IMAGE_NAME}:latest" && \
     docker push "${WAREHOUSE_IMAGE_NAME}:latest"
-  on:
-    branch: master
+  # on:
+  #   branch: master
