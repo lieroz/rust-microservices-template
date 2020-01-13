@@ -1,4 +1,4 @@
-FROM microservices-build-test/0.0.1
+FROM lieroz/base-image
 
 COPY ./config.toml /etc/config.toml
 
