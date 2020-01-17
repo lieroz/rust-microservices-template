@@ -96,7 +96,7 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
 
-    let manager = RedisConnectionManager::new("redis://localhost:6379")
+    let manager = RedisConnectionManager::new("redis://172.17.0.4:6379")
         .expect("Failed to connect to redis server");
     let pool = r2d2::Pool::builder()
         .build(manager)

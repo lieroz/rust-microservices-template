@@ -6,12 +6,12 @@ kafka_workers = 2
 log_level = 'debug'
 
 [kafka_producer]
-bootstrap_servers = 'localhost:9092'
+bootstrap_servers = '172.17.0.3:9092'
 message_timeout_ms = '5000'
 
 [kafka_consumer]
 group_id = '3'
-bootstrap_servers = 'localhost:9092'
+bootstrap_servers = '172.17.0.3:9092'
 enable_partition_eof = 'false'
 session_timeout_ms = '6000'
 enable_auto_commit = 'false'
