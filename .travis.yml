@@ -1,0 +1,30 @@
+language: rust
+rust:
+  - stable
+
+services:
+  - docker
+
+notifications:
+  email: false
+
+env:
+  global:
+    - BASE_IMAGE_NAME="${REGISTRY_USER}/base-image"
+    - AUTH_SERVER_IMAGE_NAME="${REGISTRY_USER}/auth-server"
+    - GATEWAY_IMAGE_NAME="${REGISTRY_USER}/gateway"
+    - ORDERS_IMAGE_NAME="${REGISTRY_USER}/orders"
+    - BILLING_IMAGE_NAME="${REGISTRY_USER}/billing"
+    - WAREHOUSE_IMAGE_NAME="${REGISTRY_USER}/warehouse"
+
+cache: cargo
+
+before_deploy:
+  - echo "$REGISTRY_PASS" | docker login -u "$REGISTRY_USER" --password-stdin
+
+deploy:
+  provider: script
+  script: bash deploy.sh
+  on:
+    all_branches: true
+  #   branch: master

@@ -18,7 +18,7 @@ function create_order {
 
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         localhost:8080/user/$USER_ID/order -d '{"goods": [{"id": 1, "count": 1}]}' \
-        -H "Authorization: $(echo $token | xargs)")
+        -H "Local-Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 201 ]] ; then
         echo -e "$FAILED expected 201 was $status_code"
@@ -33,7 +33,7 @@ function update_order_op_update {
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -X PUT localhost:8080/user/$USER_ID/order/1 \
         -d '{"goods": [{"id": 1, "count": 3, "operation": "update"}]}' \
-        -H "Authorization: $(echo $token | xargs)")
+        -H "Local-Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 200 ]] ; then
         echo -e "$FAILED expected 200 was $status_code"
@@ -48,7 +48,7 @@ function update_order_op_delete {
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -X PUT localhost:8080/user/$USER_ID/order/1 \
         -d '{"goods": [{"id": 1, "count": 1, "operation": "delete"}]}' \
-        -H "Authorization: $(echo $token | xargs)")
+        -H "Local-Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 200 ]] ; then
         echo -e "$FAILED expected 200 was $status_code"
@@ -61,7 +61,7 @@ function get_order {
     token=$(curl -s localhost:3000/auth -d "{\"login\": \"$USER_ID\", \"password\": \"qwerty\"}" -H 'Content-Type: application/json')
 
     response=($(curl -s -w "\n%{http_code}" localhost:8080/user/$USER_ID/order/1 \
-        -H "Authorization: $(echo $token | xargs)"| {
+        -H "Local-Authorization: $(echo $token | xargs)"| {
         read body
         read code
         echo $code
@@ -81,7 +81,7 @@ function delete_order {
 
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -X DELETE localhost:8080/user/$USER_ID/order/1 \
-        -H "Authorization: $(echo $token | xargs)")
+        -H "Local-Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 200 ]] ; then
         echo -e "$FAILED expected 200 was $status_code"
@@ -98,7 +98,7 @@ function create_billing {
 
     status_code=$(curl -s -o /dev/null -w "%{http_code}" \
         localhost:8080/user/$USER_ID/order/1/billing -d '{"id": 1}' \
-        -H "Authorization: $(echo $token | xargs)")
+        -H "Local-Authorization: $(echo $token | xargs)")
 
     if [[ $status_code -ne 201 ]] ; then
         echo -e "$FAILED expected 201 was $status_code"

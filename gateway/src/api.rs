@@ -66,7 +66,7 @@ fn check_auth_token(
     user_id: &str,
     conn: &mut r2d2::PooledConnection<RedisConnectionManager>,
 ) -> bool {
-    match req.headers().get("Authorization") {
+    match req.headers().get("Local-Authorization") {
         Some(x) => match x.to_str() {
             Ok(x) => match redis::cmd("GET").arg(user_id).query(conn.deref_mut()) {
                 Ok(value) => match value {
@@ -91,7 +91,7 @@ fn check_auth_token(
             }
         },
         None => {
-            error!("No 'Authorization' header in request");
+            error!("No 'Local-Authorization' header in request");
             false
         }
     }

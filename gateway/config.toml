@@ -3,10 +3,10 @@
 port = 8080
 workers = 4
 log_level = 'debug'
-redis_connection_string = 'redis://localhost:6379'
+redis_connection_string = 'redis://host.docker.internal:6379'
 
 [kafka_producer]
-bootstrap_servers = 'localhost:9092'
+bootstrap_servers = 'host.docker.internal:9092'
 message_timeout_ms = '5000'
 
 [kafka_topics]
@@ -14,5 +14,5 @@ orders_service_topic = 'orders'
 billing_service_topic = 'billings'
 
 [services]
-orders_service_addr = 'localhost:8081'
-warehouse_service_addr = 'localhost:8083'
+orders_service_addr = 'orders:8081'
+warehouse_service_addr = 'warehouse:8083'
